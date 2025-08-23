@@ -142,12 +142,28 @@ export function ChatPanel() {
             }
           }
         } catch (queryError: any) {
-          // Query execution failed
+          // Query execution failed - provide helpful error message
+          console.error('Query execution error:', queryError);
+          
+          let errorDetails = queryError.message || 'Unknown error';
+          let suggestion = '';
+          
+          // Parse common DuckDB errors and provide suggestions
+          if (errorDetails.includes('not found') || errorDetails.includes('does not exist')) {
+            suggestion = '\n\nThis might be a column name issue. The available columns are:\n' + 
+              tableSchemas.map(s => `Table ${s.tableName}: ${s.columns.map((c: any) => c.name).join(', ')}`).join('\n');
+          } else if (errorDetails.includes('syntax error')) {
+            suggestion = '\n\nThere might be a syntax issue with the generated SQL. Please try rephrasing your question more specifically.';
+          } else if (errorDetails.includes('type mismatch') || errorDetails.includes('cannot cast')) {
+            suggestion = '\n\nThis appears to be a data type issue. Try being more specific about the columns or values you want to query.';
+          }
+          
           const errorMessage = {
             id: `msg_${Date.now()}`,
             role: 'assistant' as const,
-            content: `I understood your question and generated this SQL query:\n\n\`\`\`sql\n${data.sql}\n\`\`\`\n\nHowever, the query failed with error: ${queryError.message}\n\nLet me try a different approach or please refine your question.`,
+            content: `I understood your question and generated this SQL query:\n\n\`\`\`sql\n${data.sql}\n\`\`\`\n\n❌ Query execution failed: ${errorDetails}${suggestion}\n\nWould you like to try rephrasing your question?`,
             timestamp: new Date().toISOString(),
+            suggestions: data.suggestions || ['Show me all data', 'Show summary statistics', 'Show top 10 records']
           };
           addMessage(errorMessage);
         }

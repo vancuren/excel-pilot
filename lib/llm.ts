@@ -62,20 +62,24 @@ ${schemaDescription}
 
 Question: ${question}
 
-Generate a SQL query that answers this question. Return your response in this exact JSON format:
+Generate a SQL query that answers this question. 
+
+CRITICAL: You MUST respond with ONLY a valid JSON object, no additional text before or after.
+Return your response in this EXACT format:
 {
   "query": "SELECT ...",
   "explanation": "Brief explanation of what the query does",
-  "suggestions": ["Optional follow-up questions"]
+  "suggestions": ["Optional follow-up question 1", "Optional follow-up question 2"]
 }
 
-Important:
+SQL Requirements:
 - Use DuckDB SQL syntax
 - Use double quotes for column names with spaces or special characters
 - For date comparisons, use CURRENT_DATE
 - For currency/amount columns, handle them as DOUBLE or DECIMAL
 - Include appropriate JOINs if the question spans multiple tables
-- Always include ORDER BY and LIMIT clauses when appropriate`;
+- Always include ORDER BY and LIMIT clauses when appropriate
+- Do NOT include semicolons at the end of the query`;
 
     const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
@@ -92,22 +96,63 @@ Important:
 
     const content = response.content[0];
     if (content.type === 'text') {
-      try {
-        const result = JSON.parse(content.text);
-        return {
-          query: result.query,
-          explanation: result.explanation,
-          suggestions: result.suggestions
-        };
-      } catch (parseError) {
-        // Try to extract SQL from the response
-        const sqlMatch = content.text.match(/SELECT[\s\S]+?(?:;|$)/i);
-        if (sqlMatch) {
-          return {
-            query: sqlMatch[0],
-            explanation: 'Generated SQL query',
-            suggestions: []
-          };
+      // Clean the response text - remove markdown code blocks if present
+      let cleanedText = content.text.trim();
+      
+      // Remove markdown JSON code blocks
+      cleanedText = cleanedText.replace(/^```json?\s*/i, '').replace(/\s*```$/i, '');
+      
+      // Try to find JSON object in the response
+      const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        try {
+          const result = JSON.parse(jsonMatch[0]);
+          
+          // Validate the response structure
+          if (result.query && typeof result.query === 'string') {
+            // Clean up the SQL query
+            let query = result.query.trim();
+            
+            // Remove any trailing semicolons (DuckDB doesn't need them)
+            query = query.replace(/;\s*$/, '');
+            
+            // Validate basic SQL syntax
+            if (!query.match(/^\s*(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)/i)) {
+              throw new Error('Invalid SQL query structure');
+            }
+            
+            return {
+              query: query,
+              explanation: result.explanation || 'Generated SQL query',
+              suggestions: Array.isArray(result.suggestions) ? result.suggestions : []
+            };
+          }
+        } catch (parseError) {
+          console.warn('Failed to parse JSON response:', parseError);
+        }
+      }
+      
+      // Fallback: Try to extract SQL directly from the response
+      const sqlPatterns = [
+        /```sql?\s*([\s\S]+?)\s*```/i,  // SQL in markdown code block
+        /SELECT[\s\S]+?(?:FROM[\s\S]+?)(?:;|\s*$)/i,  // Direct SELECT statement
+        /WITH[\s\S]+?SELECT[\s\S]+?(?:;|\s*$)/i,  // CTE query
+      ];
+      
+      for (const pattern of sqlPatterns) {
+        const match = cleanedText.match(pattern);
+        if (match) {
+          let query = (match[1] || match[0]).trim();
+          query = query.replace(/;\s*$/, '');
+          
+          // Basic validation
+          if (query.match(/^\s*(SELECT|WITH)/i)) {
+            return {
+              query: query,
+              explanation: 'Extracted SQL query from response',
+              suggestions: []
+            };
+          }
         }
       }
     }
@@ -244,16 +289,29 @@ Keep your response concise and focused on actionable insights.`;
 function fallbackNLToSQL(question: string, schemas: TableSchema[]): SQLQueryResult {
   const lowerQuestion = question.toLowerCase();
   const tableName = schemas[0]?.tableName || 'table';
+  const columns = schemas[0]?.columns || [];
+  
+  // Helper to find column names (case-insensitive)
+  const findColumn = (patterns: string[]): string | null => {
+    for (const pattern of patterns) {
+      const col = columns.find(c => c.name.toLowerCase().includes(pattern));
+      if (col) return `"${col.name}"`;
+    }
+    return null;
+  };
+  
+  const amountCol = findColumn(['amount', 'total', 'price', 'cost', 'value']) || 'amount';
+  const dateCol = findColumn(['date', 'created', 'updated', 'due']) || 'date';
+  const statusCol = findColumn(['status', 'state']) || 'status';
+  const nameCol = findColumn(['vendor', 'customer', 'name', 'company']) || 'name';
+  
+  // Clean up queries - remove extra whitespace and newlines
+  const cleanQuery = (query: string) => query.trim().replace(/\s+/g, ' ');
   
   // Overdue analysis
   if (lowerQuestion.includes('overdue')) {
     return {
-      query: `
-        SELECT * 
-        FROM ${tableName}
-        WHERE due_date < CURRENT_DATE 
-          AND (status != 'paid' OR status IS NULL)
-        ORDER BY due_date ASC`,
+      query: cleanQuery(`SELECT * FROM ${tableName} WHERE ${dateCol} < CURRENT_DATE AND (${statusCol} != 'paid' OR ${statusCol} IS NULL) ORDER BY ${dateCol} ASC`),
       explanation: 'Find all overdue items based on due date',
       suggestions: ['Show overdue amounts by vendor', 'Calculate total overdue amount']
     };
@@ -262,51 +320,62 @@ function fallbackNLToSQL(question: string, schemas: TableSchema[]): SQLQueryResu
   // Summary queries
   if (lowerQuestion.includes('summary') || lowerQuestion.includes('overview')) {
     return {
-      query: `
-        SELECT 
-          COUNT(*) as total_records,
-          COUNT(DISTINCT vendor_name) as unique_vendors,
-          SUM(amount) as total_amount,
-          AVG(amount) as avg_amount
-        FROM ${tableName}`,
+      query: cleanQuery(`SELECT COUNT(*) as total_records, COUNT(DISTINCT ${nameCol}) as unique_entities, SUM(${amountCol}) as total_amount, AVG(${amountCol}) as avg_amount FROM ${tableName}`),
       explanation: 'Generate summary statistics',
       suggestions: ['Group by status', 'Show monthly trends']
     };
   }
   
   // Top queries
-  if (lowerQuestion.includes('top') || lowerQuestion.includes('largest')) {
+  if (lowerQuestion.includes('top') || lowerQuestion.includes('largest') || lowerQuestion.includes('highest')) {
+    const numberMatch = lowerQuestion.match(/\d+/);
+    const limit = numberMatch ? parseInt(numberMatch[0]) : 10;
     return {
-      query: `
-        SELECT *
-        FROM ${tableName}
-        ORDER BY amount DESC
-        LIMIT 10`,
-      explanation: 'Show top 10 records by amount',
+      query: cleanQuery(`SELECT * FROM ${tableName} ORDER BY ${amountCol} DESC LIMIT ${limit}`),
+      explanation: `Show top ${limit} records by amount`,
       suggestions: ['Group by vendor', 'Filter by date range']
     };
   }
   
   // Group by queries
-  if (lowerQuestion.includes('by vendor') || lowerQuestion.includes('per vendor')) {
+  if (lowerQuestion.includes('by vendor') || lowerQuestion.includes('per vendor') || lowerQuestion.includes('group by')) {
     return {
-      query: `
-        SELECT 
-          vendor_name,
-          COUNT(*) as invoice_count,
-          SUM(amount) as total_amount,
-          AVG(amount) as avg_amount
-        FROM ${tableName}
-        GROUP BY vendor_name
-        ORDER BY total_amount DESC`,
-      explanation: 'Aggregate data by vendor',
+      query: cleanQuery(`SELECT ${nameCol}, COUNT(*) as count, SUM(${amountCol}) as total_amount, AVG(${amountCol}) as avg_amount FROM ${tableName} GROUP BY ${nameCol} ORDER BY total_amount DESC`),
+      explanation: 'Aggregate data by grouping',
       suggestions: ['Filter by status', 'Add date range']
     };
   }
   
-  // Default query
+  // Count queries
+  if (lowerQuestion.includes('how many') || lowerQuestion.includes('count')) {
+    return {
+      query: cleanQuery(`SELECT COUNT(*) as total_count FROM ${tableName}`),
+      explanation: 'Count total records',
+      suggestions: ['Count by status', 'Count unique values']
+    };
+  }
+  
+  // Total/sum queries
+  if (lowerQuestion.includes('total') || lowerQuestion.includes('sum')) {
+    return {
+      query: cleanQuery(`SELECT SUM(${amountCol}) as total_amount FROM ${tableName}`),
+      explanation: 'Calculate total amount',
+      suggestions: ['Total by month', 'Total by category']
+    };
+  }
+  
+  // Average queries
+  if (lowerQuestion.includes('average') || lowerQuestion.includes('avg')) {
+    return {
+      query: cleanQuery(`SELECT AVG(${amountCol}) as average_amount FROM ${tableName}`),
+      explanation: 'Calculate average amount',
+      suggestions: ['Average by vendor', 'Average by month']
+    };
+  }
+  
+  // Default query - show sample with all columns
   return {
-    query: `SELECT * FROM ${tableName} LIMIT 100`,
+    query: cleanQuery(`SELECT * FROM ${tableName} LIMIT 25`),
     explanation: 'Show sample data from the table',
     suggestions: ['Add filters', 'Aggregate by columns', 'Search for specific values']
   };

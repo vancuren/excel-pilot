@@ -69,9 +69,26 @@ export async function POST(request: NextRequest) {
     const sqlResult = await naturalLanguageToSQL(message, schemas);
     
     if (sqlResult.query && !sqlResult.error) {
+      // Validate SQL syntax before sending to client
+      const cleanedQuery = sqlResult.query.trim();
+      
+      // Basic SQL validation
+      if (!cleanedQuery.match(/^\s*(SELECT|WITH|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER)/i)) {
+        return NextResponse.json({
+          error: 'Invalid SQL query generated. Please try rephrasing your question.'
+        }, { status: 400 });
+      }
+      
+      // Check for common SQL injection patterns (extra safety)
+      if (cleanedQuery.includes('--') || cleanedQuery.includes('/*') || cleanedQuery.includes('*/')) {
+        return NextResponse.json({
+          error: 'Generated SQL contains potentially unsafe patterns. Please try a different question.'
+        }, { status: 400 });
+      }
+      
       // Return the SQL query for client-side execution
       const response = {
-        sql: sqlResult.query,
+        sql: cleanedQuery,
         explanation: sqlResult.explanation,
         suggestions: sqlResult.suggestions,
         shouldExecuteClient: true

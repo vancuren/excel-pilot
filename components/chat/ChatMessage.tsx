@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChatMessage as ChatMessageType } from '@/types';
 import { ToolActions } from './ToolActions';
+import { marked } from 'marked';
 
 interface ChatMessageProps {
   message: ChatMessageType & { queryData?: any[] };
@@ -13,6 +14,18 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
+
+  const styleContent = (content: string) => {
+    return content
+      .replace(/^## (.*$)/gim, '<span class="font-bold text-lg">$1</span>')
+      .replace(/^### (.*$)/gim, '<span class="font-semibold text-base">$1</span>')
+      .replace(/\*\*(.*?)\*\*/gim, '<span class="font-bold">$1</span>')
+      .replace(/\*(.*?)\*/gim, '<span class="italic">$1</span>');
+  }
+
+  const chatContent = isUser ? message.content : styleContent(message.content);
+
+  console.log(chatContent);
 
   return (
     <div className="flex items-start gap-3 group">
@@ -41,11 +54,20 @@ export function ChatMessage({ message }: ChatMessageProps) {
           }
         `}>
           <div className="prose prose-sm max-w-none dark:prose-invert">
-            <p className={`text-sm leading-relaxed whitespace-pre-wrap m-0 ${
+
+            {isUser ? (
+              <p className={`text-sm leading-relaxed whitespace-pre-wrap m-0 text-primary-foreground`}>
+                {message.content}
+              </p>
+            ) : (
+              <p className="text-sm leading-relaxed whitespace-pre-wrap m-0 text-foreground" dangerouslySetInnerHTML={{ __html: marked.parse(message.content) }}></p>
+            )}
+
+            {/* <p className={`text-sm leading-relaxed whitespace-pre-wrap m-0 ${
               isUser ? 'text-primary-foreground' : 'text-foreground'
             }`}>
-              {message.content}
-            </p>
+              {isUser ? message.content : marked.parse(message.content)}
+            </p> */}
           </div>
           
           {message.artifacts && message.artifacts.length > 0 && (
