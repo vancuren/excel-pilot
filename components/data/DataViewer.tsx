@@ -95,10 +95,10 @@ export function DataViewer() {
   return (
     <div className="h-full flex flex-col space-y-4">
       {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-6">
         <div className="flex items-center gap-2 flex-wrap">
           {tableNames.map((tableName) => (
-            <Badge key={tableName} variant="secondary" className="cursor-pointer">
+            <Badge key={tableName} variant="secondary" className="cursor-pointer bg-muted/60 hover:bg-muted/80 transition-colors">
               {tableName}
               <span className="ml-1 text-xs opacity-60">
                 ({tables[tableName].rows.length})
@@ -113,7 +113,7 @@ export function DataViewer() {
             placeholder="Search data..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9"
+            className="pl-9 bg-muted/30 border-border/60 focus:bg-background transition-colors"
           />
         </div>
       </div>
@@ -126,7 +126,7 @@ export function DataViewer() {
       {/* Main Content */}
       <div className="flex-1 min-h-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-lg mb-4">
             <TabsTrigger value="table" className="flex items-center gap-2">
               <TableIcon className="h-4 w-4" />
               Table
@@ -139,7 +139,7 @@ export function DataViewer() {
               <TrendingUp className="h-4 w-4" />
               Results
               {resultTabs.length > 0 && (
-                <Badge variant="secondary" className="ml-1 text-xs">
+                <Badge variant="secondary" className="ml-1 text-xs bg-primary/10 text-primary">
                   {resultTabs.length}
                 </Badge>
               )}
@@ -147,7 +147,7 @@ export function DataViewer() {
           </TabsList>
 
           <div className="flex-1 min-h-0">
-            <TabsContent value="table" className="h-full">
+            <TabsContent value="table" className="h-full mt-0">
               {currentTable ? (
                 <DataTable table={currentTable} searchTerm={searchTerm} />
               ) : (
@@ -157,7 +157,7 @@ export function DataViewer() {
               )}
             </TabsContent>
 
-            <TabsContent value="chart" className="h-full">
+            <TabsContent value="chart" className="h-full mt-0">
               {currentTable ? (
                 <DataChart table={currentTable} />
               ) : (
@@ -167,7 +167,7 @@ export function DataViewer() {
               )}
             </TabsContent>
 
-            <TabsContent value="results" className="h-full">
+            <TabsContent value="results" className="h-full mt-0">
               <div className="h-full space-y-4">
                 {resultTabs.length === 0 ? (
                   <div className="h-full flex items-center justify-center">
@@ -178,9 +178,9 @@ export function DataViewer() {
                     </div>
                   </div>
                 ) : (
-                  <Card className="h-full">
+                  <Card className="h-full border-border/50 shadow-sm">
                     <CardHeader>
-                      <CardTitle>Analysis Results</CardTitle>
+                      <CardTitle className="text-lg font-semibold">Analysis Results</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-muted-foreground">Recent analysis results will appear here</p>

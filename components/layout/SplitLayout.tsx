@@ -7,18 +7,18 @@ import { ChatPanel } from '@/components/chat/ChatPanel';
 
 export function SplitLayout() {
   return (
-    <div className="h-[calc(100vh-4rem)]">
+    <div className="h-[calc(100vh-3.5rem)]">
       <PanelGroup direction="horizontal" className="h-full">
         <Panel defaultSize={75} minSize={50}>
-          <div className="h-full p-4">
+          <div className="h-full p-6">
             <DataViewer />
           </div>
         </Panel>
         
-        <PanelResizeHandle className="w-2 bg-border hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors" />
+        <PanelResizeHandle className="w-1 bg-border/60 hover:bg-primary/20 transition-colors duration-200" />
         
         <Panel defaultSize={25} minSize={20}>
-          <div className="h-full p-4">
+          <div className="h-full">
             <ChatPanel />
           </div>
         </Panel>

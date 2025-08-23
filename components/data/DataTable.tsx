@@ -102,22 +102,22 @@ export function DataTable({ table, searchTerm }: DataTableProps) {
   };
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardContent className="flex-1 p-6 overflow-hidden">
+    <Card className="h-full flex flex-col border-border/50 shadow-sm">
+      <CardContent className="flex-1 p-0 overflow-hidden">
         <div className="h-full overflow-auto">
-          <Table>
+          <Table className="relative">
             <TableHeader>
-              <TableRow>
+              <TableRow className="border-b border-border/60 bg-muted/30 hover:bg-muted/30">
                 {table.schema.map((column) => (
                   <TableHead
                     key={column.name}
-                    className="cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="cursor-pointer hover:bg-muted/60 transition-colors duration-150 px-6 py-4 font-semibold"
                     onClick={() => handleSort(column.name)}
                   >
                     <div className="flex items-center gap-2">
                       <div className="flex flex-col gap-1">
-                        <span className="font-medium">{column.name}</span>
-                        <Badge variant="outline" className={`text-xs ${getTypeColor(column.type)}`}>
+                        <span className="font-semibold text-foreground">{column.name}</span>
+                        <Badge variant="outline" className={`text-xs border-0 ${getTypeColor(column.type)}`}>
                           {column.type}
                         </Badge>
                       </div>
@@ -129,9 +129,9 @@ export function DataTable({ table, searchTerm }: DataTableProps) {
             </TableHeader>
             <TableBody>
               {filteredAndSortedRows.map((row, index) => (
-                <TableRow key={index} className="hover:bg-muted/30 transition-colors">
+                <TableRow key={index} className={`hover:bg-muted/40 transition-colors duration-150 ${index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}`}>
                   {table.schema.map((column) => (
-                    <TableCell key={column.name} className="font-mono text-sm">
+                    <TableCell key={column.name} className="font-mono text-sm px-6 py-4">
                       {formatCellValue(row[column.name], column.type)}
                     </TableCell>
                   ))}
@@ -141,7 +141,7 @@ export function DataTable({ table, searchTerm }: DataTableProps) {
           </Table>
           
           {filteredAndSortedRows.length === 0 && (
-            <div className="text-center py-8">
+            <div className="text-center py-12">
               <p className="text-muted-foreground">
                 {searchTerm ? 'No matching records found' : 'No data available'}
               </p>

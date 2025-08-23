@@ -37,13 +37,13 @@ export function AuditTimeline() {
 
   return (
     <Collapsible open={isOpen} onOpenChange={setIsOpen}>
-      <Card>
+      <Card className="border-border/50 shadow-sm">
         <CollapsibleTrigger asChild>
-          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
+          <CardHeader className="cursor-pointer hover:bg-muted/30 transition-colors duration-200 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <CardTitle className="text-lg">Audit Timeline</CardTitle>
-                <Badge variant="secondary">{auditEvents.length} events</Badge>
+                <CardTitle className="text-base font-semibold">Audit Timeline</CardTitle>
+                <Badge variant="secondary" className="bg-muted/60">{auditEvents.length} events</Badge>
               </div>
               {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
             </div>
@@ -51,10 +51,10 @@ export function AuditTimeline() {
         </CollapsibleTrigger>
         
         <CollapsibleContent>
-          <CardContent className="pt-0">
+          <CardContent className="pt-0 pb-6">
             <div className="space-y-4 max-h-64 overflow-y-auto">
               {auditEvents.map((event, index) => (
-                <div key={event.id} className="flex gap-4 p-3 rounded-lg border bg-card">
+                <div key={event.id} className="flex gap-4 p-4 rounded-xl border border-border/50 bg-muted/20 hover:bg-muted/30 transition-colors duration-200">
                   <div className={`p-2 rounded-lg ${getEventColor(event.category)}`}>
                     {getEventIcon(event.category)}
                   </div>
@@ -62,7 +62,7 @@ export function AuditTimeline() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <p className="font-medium text-sm">{event.summary}</p>
+                        <p className="font-medium text-sm text-foreground">{event.summary}</p>
                         {event.detail && (
                           <p className="text-xs text-muted-foreground mt-1">{event.detail}</p>
                         )}
@@ -73,13 +73,13 @@ export function AuditTimeline() {
                     </div>
                     
                     {event.artifacts && event.artifacts.length > 0 && (
-                      <div className="flex gap-2 mt-2 flex-wrap">
+                      <div className="flex gap-2 mt-3 flex-wrap">
                         {event.artifacts.map((artifact, idx) => (
                           <Button
                             key={idx}
                             variant="outline"
                             size="sm"
-                            className="h-7 text-xs"
+                            className="h-8 text-xs hover:bg-muted/80 transition-colors"
                             onClick={() => window.open(artifact.url, '_blank')}
                           >
                             {artifact.kind === 'pdf' ? <FileText className="h-3 w-3 mr-1" /> : 

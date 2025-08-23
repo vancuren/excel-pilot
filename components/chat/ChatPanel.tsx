@@ -210,12 +210,12 @@ export function ChatPanel() {
     .flatMap(msg => msg.toolSuggestions || []);
 
   return (
-    <div className="h-full flex flex-col bg-background border-l border-border/40">
+    <div className="h-full flex flex-col bg-background/50 backdrop-blur-sm border-l border-border/50">
       {/* Header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-border/40 bg-background/80 backdrop-blur-sm">
+      <div className="flex-shrink-0 px-6 py-4 border-b border-border/50 bg-background/95 backdrop-blur-md">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600">
-            <Bot className="h-4 w-4 text-white" />
+          <div className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-br from-primary to-primary/80 shadow-sm">
+            <Bot className="h-4 w-4 text-primary-foreground" />
           </div>
           <div className="flex-1">
             <h3 className="text-sm font-semibold text-foreground">AI Assistant</h3>
@@ -229,22 +229,22 @@ export function ChatPanel() {
       {/* Chat Messages */}
       <div className="flex-1 min-h-0 relative">
         <ScrollArea className="h-full">
-          <div className="px-4 py-4 space-y-6">
+          <div className="px-6 py-6 space-y-8">
             {chatMessages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center space-y-4">
-                <div className="flex items-center justify-center w-12 h-12 rounded-full bg-gradient-to-br from-blue-500/10 to-purple-600/10 border border-blue-200/20">
-                  <Sparkles className="h-6 w-6 text-blue-500" />
+              <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center space-y-6">
+                <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
+                  <Sparkles className="h-8 w-8 text-primary" />
                 </div>
-                <div className="space-y-2">
-                  <h4 className="text-sm font-medium text-foreground">Start a conversation</h4>
+                <div className="space-y-3">
+                  <h4 className="text-base font-semibold text-foreground">Start a conversation</h4>
                   <p className="text-xs text-muted-foreground max-w-[200px]">
                     Ask about overdue vendors, cash reconciliation, or journal entries
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-2 justify-center max-w-[250px]">
-                  <Badge variant="secondary" className="text-xs">Overdue analysis</Badge>
-                  <Badge variant="secondary" className="text-xs">Cash flow</Badge>
-                  <Badge variant="secondary" className="text-xs">Reconciliation</Badge>
+                  <Badge variant="secondary" className="text-xs bg-muted/60">Overdue analysis</Badge>
+                  <Badge variant="secondary" className="text-xs bg-muted/60">Cash flow</Badge>
+                  <Badge variant="secondary" className="text-xs bg-muted/60">Reconciliation</Badge>
                 </div>
               </div>
             ) : (
@@ -255,15 +255,15 @@ export function ChatPanel() {
                 
                 {isTyping && (
                   <div className="flex items-start gap-3">
-                    <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-to-br from-blue-500/10 to-purple-600/10 border border-blue-200/20 flex-shrink-0">
-                      <Bot className="h-3.5 w-3.5 text-blue-500" />
+                    <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 flex-shrink-0">
+                      <Bot className="h-4 w-4 text-primary" />
                     </div>
                     <div className="flex-1 pt-1">
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <div className="flex space-x-1">
-                          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" />
-                          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                          <div className="w-1.5 h-1.5 bg-blue-500 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
+                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
                         </div>
                         <span>AI is analyzing...</span>
                       </div>
@@ -278,13 +278,13 @@ export function ChatPanel() {
 
       {/* Smart Actions */}
       {suggestions.length > 0 && (
-        <div className="flex-shrink-0 px-4 py-3 border-t border-border/40 bg-muted/20">
-          <div className="space-y-3">
+        <div className="flex-shrink-0 px-6 py-4 border-t border-border/50 bg-muted/30">
+          <div className="space-y-4">
             <div className="flex items-center gap-2">
-              <Zap className="h-3.5 w-3.5 text-amber-500" />
-              <span className="text-xs font-medium text-foreground">Quick Actions</span>
+              <Zap className="h-4 w-4 text-amber-500" />
+              <span className="text-sm font-medium text-foreground">Quick Actions</span>
             </div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {suggestions.map((suggestion) => (
                 <ActionButton
                   key={suggestion.id}
@@ -299,7 +299,7 @@ export function ChatPanel() {
       )}
 
       {/* Message Input */}
-      <div className="flex-shrink-0 p-4 border-t border-border/40 bg-background">
+      <div className="flex-shrink-0 p-6 border-t border-border/50 bg-background/95 backdrop-blur-md">
         <div className="relative">
           <Input
             placeholder={currentDatasetId ? "Ask about your financial data..." : "Upload data first..."}
@@ -312,15 +312,15 @@ export function ChatPanel() {
               }
             }}
             disabled={!currentDatasetId || isTyping}
-            className="pr-12 bg-background border-border/60 focus:border-blue-500/60 focus:ring-blue-500/20 transition-all duration-200"
+            className="pr-12 bg-muted/30 border-border/60 focus:bg-background focus:border-primary/60 focus:ring-primary/20 transition-all duration-200 rounded-xl"
           />
           <Button 
             onClick={handleSendMessage} 
             disabled={!inputMessage.trim() || !currentDatasetId || isTyping}
             size="sm"
-            className="absolute right-1.5 top-1.5 h-7 w-7 p-0 bg-blue-600 hover:bg-blue-700 disabled:bg-muted disabled:text-muted-foreground transition-all duration-200"
+            className="absolute right-2 top-2 h-8 w-8 p-0 bg-primary hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground transition-all duration-200 rounded-lg"
           >
-            <Send className="h-3.5 w-3.5" />
+            <Send className="h-4 w-4" />
           </Button>
         </div>
       </div>

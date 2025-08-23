@@ -114,19 +114,19 @@ export function DataChart({ table }: DataChartProps) {
   };
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardHeader className="pb-4">
+    <Card className="h-full flex flex-col border-border/50 shadow-sm">
+      <CardHeader className="pb-6 px-6 pt-6">
         <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
           <CardTitle className="flex items-center gap-2">
             Data Visualization
-            <Badge variant="outline">{table.name}</Badge>
+            <Badge variant="outline" className="bg-muted/60 border-border/60">{table.name}</Badge>
           </CardTitle>
           
           <div className="flex gap-2 flex-wrap">
             <Select value={chartConfig.type} onValueChange={(value: any) => 
               setChartConfig(prev => ({ ...prev, type: value }))
             }>
-              <SelectTrigger className="w-24">
+              <SelectTrigger className="w-24 h-9 bg-muted/50 border-border/60">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -139,7 +139,7 @@ export function DataChart({ table }: DataChartProps) {
             <Select value={chartConfig.x} onValueChange={(value) =>
               setChartConfig(prev => ({ ...prev, x: value }))
             }>
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-32 h-9 bg-muted/50 border-border/60">
                 <SelectValue placeholder="X-Axis" />
               </SelectTrigger>
               <SelectContent>
@@ -154,7 +154,7 @@ export function DataChart({ table }: DataChartProps) {
             <Select value={chartConfig.y} onValueChange={(value) =>
               setChartConfig(prev => ({ ...prev, y: value }))
             }>
-              <SelectTrigger className="w-32">
+              <SelectTrigger className="w-32 h-9 bg-muted/50 border-border/60">
                 <SelectValue placeholder="Y-Axis" />
               </SelectTrigger>
               <SelectContent>
@@ -169,7 +169,7 @@ export function DataChart({ table }: DataChartProps) {
         </div>
       </CardHeader>
       
-      <CardContent className="flex-1 min-h-0">
+      <CardContent className="flex-1 min-h-0 px-6 pb-6">
         <div className="h-full">
           <ResponsiveContainer width="100%" height="100%">
             {renderChart() || <div />}

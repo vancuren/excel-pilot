@@ -204,15 +204,15 @@ export function FileUploader() {
       case 'uploading':
         return (
           <div className="space-y-4">
-            <Loader2 className="h-12 w-12 text-blue-600 mx-auto animate-spin" />
+            <Loader2 className="h-12 w-12 text-primary mx-auto animate-spin" />
             <div className="space-y-2">
-              <p className="font-medium">{uploadState.message || 'Processing your file...'}</p>
+              <p className="font-medium text-foreground">{uploadState.message || 'Processing your file...'}</p>
               <Progress value={uploadState.progress} className="w-64 mx-auto" />
               <p className="text-sm text-muted-foreground">
                 {uploadState.progress}% complete
               </p>
               {uploadState.phase && (
-                <Badge variant="secondary" className="mx-auto">
+                <Badge variant="secondary" className="mx-auto bg-muted/60">
                   {uploadState.phase === 'reading' ? 'Reading file' :
                    uploadState.phase === 'parsing' ? 'Parsing data' :
                    uploadState.phase === 'validating' ? 'Validating' :
@@ -226,9 +226,9 @@ export function FileUploader() {
       case 'success':
         return (
           <div className="space-y-4">
-            <CheckCircle className="h-12 w-12 text-green-600 mx-auto" />
+            <CheckCircle className="h-12 w-12 text-green-500 mx-auto" />
             <div>
-              <p className="font-medium text-green-700">Upload successful!</p>
+              <p className="font-medium text-green-600 dark:text-green-400">Upload successful!</p>
               <p className="text-sm text-muted-foreground">Your data is ready for analysis</p>
             </div>
             {uploadState.warnings && uploadState.warnings.length > 0 && (
@@ -250,9 +250,9 @@ export function FileUploader() {
       case 'error':
         return (
           <div className="space-y-4">
-            <AlertCircle className="h-12 w-12 text-red-600 mx-auto" />
+            <AlertCircle className="h-12 w-12 text-destructive mx-auto" />
             <div>
-              <p className="font-medium text-red-700">Upload failed</p>
+              <p className="font-medium text-destructive">Upload failed</p>
               <p className="text-sm text-muted-foreground">{uploadState.error}</p>
             </div>
             <Button 
@@ -267,11 +267,11 @@ export function FileUploader() {
       default:
         return (
           <div className="space-y-4">
-            <Upload className={`h-12 w-12 mx-auto transition-colors ${
-              isDragActive ? 'text-blue-600' : 'text-muted-foreground'
+            <Upload className={`h-12 w-12 mx-auto transition-colors duration-200 ${
+              isDragActive ? 'text-primary' : 'text-muted-foreground'
             }`} />
             <div>
-              <p className="font-medium">
+              <p className="font-medium text-foreground">
                 {isDragActive ? 'Drop your file here' : 'Upload your financial data'}
               </p>
               <p className="text-sm text-muted-foreground">
@@ -288,44 +288,44 @@ export function FileUploader() {
             )}
             
             <div className="flex gap-2 flex-wrap justify-center">
-              <Badge variant="secondary">
+              <Badge variant="secondary" className="bg-muted/60 text-muted-foreground">
                 <FileSpreadsheet className="h-3 w-3 mr-1" />
                 CSV
               </Badge>
-              <Badge variant="secondary">
+              <Badge variant="secondary" className="bg-muted/60 text-muted-foreground">
                 <FileSpreadsheet className="h-3 w-3 mr-1" />
                 TSV
               </Badge>
-              <Badge variant="secondary">
+              <Badge variant="secondary" className="bg-muted/60 text-muted-foreground">
                 <FileSpreadsheet className="h-3 w-3 mr-1" />
                 Excel
               </Badge>
-              <Badge variant="secondary">
+              <Badge variant="secondary" className="bg-muted/60 text-muted-foreground">
                 <FileJson className="h-3 w-3 mr-1" />
                 JSON
               </Badge>
-              <Badge variant="secondary">
+              <Badge variant="secondary" className="bg-muted/60 text-muted-foreground">
                 <FileText className="h-3 w-3 mr-1" />
                 PDF
               </Badge>
             </div>
             
-            <Button variant="outline">Browse Files</Button>
+            <Button variant="outline" className="hover:bg-muted/80 transition-colors">Browse Files</Button>
           </div>
         );
     }
   };
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardContent className="p-8">
+    <Card className="w-full max-w-2xl mx-auto border-border/50 shadow-sm">
+      <CardContent className="p-10">
         <div
           {...getRootProps()}
           className={`
-            border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-all
+            border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-200
             ${isDragActive 
-              ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20' 
-              : 'border-muted-foreground/25 hover:border-muted-foreground/50'
+              ? 'border-primary bg-primary/5' 
+              : 'border-border hover:border-border/80 hover:bg-muted/30'
             }
             ${uploadState.status !== 'idle' ? 'pointer-events-none' : ''}
           `}
