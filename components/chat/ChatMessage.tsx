@@ -6,9 +6,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChatMessage as ChatMessageType } from '@/types';
+import { ToolActions } from './ToolActions';
 
 interface ChatMessageProps {
-  message: ChatMessageType;
+  message: ChatMessageType & { queryData?: any[] };
 }
 
 export function ChatMessage({ message }: ChatMessageProps) {
@@ -66,6 +67,19 @@ export function ChatMessage({ message }: ChatMessageProps) {
                     </Button>
                   ))}
                 </div>
+              </div>
+            )}
+            
+            {/* Add tool actions for assistant messages with data */}
+            {!isUser && message.queryData && message.queryData.length > 0 && (
+              <div className="mt-3 pt-3 border-t">
+                <ToolActions 
+                  message={message.content} 
+                  data={message.queryData}
+                  onToolExecuted={(result) => {
+                    console.log('Tool executed:', result);
+                  }}
+                />
               </div>
             )}
           </CardContent>

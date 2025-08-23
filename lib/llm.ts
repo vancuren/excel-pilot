@@ -153,7 +153,7 @@ Provide:
 Format your response in markdown with clear headings.`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 1500,
       temperature: 0.3,
       messages: [
@@ -215,7 +215,7 @@ Provide:
 Keep your response concise and focused on actionable insights.`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-3-haiku-20240307',
+      model: 'claude-sonnet-4-20250514',
       max_tokens: 800,
       temperature: 0.3,
       messages: [

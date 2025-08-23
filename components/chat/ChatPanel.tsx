@@ -131,6 +131,7 @@ export function ChatPanel() {
               analysisData.messages.forEach((msg: any) => {
                 addMessage({
                   ...msg,
+                  queryData: queryResults, // Add query results to message
                   metadata: {
                     ...msg.metadata,
                     query: data.sql,
