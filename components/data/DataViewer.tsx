@@ -12,6 +12,7 @@ import { QuickStats } from './QuickStats';
 import { AuditTimeline } from './AuditTimeline';
 import { useAppStore } from '@/lib/store';
 import { api } from '@/lib/api';
+import { getTablePreview } from '@/lib/clientDatabase';
 
 export function DataViewer() {
   const [searchTerm, setSearchTerm] = useState('');
@@ -46,10 +47,28 @@ export function DataViewer() {
     
     setLoading(true);
     try {
-      const { tables: tableList } = await api.getTables(currentDatasetId);
-      tableList.forEach(table => {
-        setTable(table.name, table);
-      });
+      // Try to load tables from localStorage first (stored during upload)
+      const storedTables = localStorage.getItem(`dataset_${currentDatasetId}_tables`);
+      
+      if (storedTables) {
+        const tableInfo = JSON.parse(storedTables);
+        
+        // Load each table from client-side DuckDB
+        for (const info of tableInfo) {
+          try {
+            const tablePreview = await getTablePreview(info.name);
+            setTable(info.name, tablePreview);
+          } catch (error) {
+            console.error(`Failed to load table ${info.name}:`, error);
+          }
+        }
+      } else {
+        // Fallback to API (which might return mock data)
+        const { tables: tableList } = await api.getTables(currentDatasetId);
+        tableList.forEach(table => {
+          setTable(table.name, table);
+        });
+      }
     } catch (error) {
       console.error('Failed to load tables:', error);
     }

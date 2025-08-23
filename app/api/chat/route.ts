@@ -1,81 +1,130 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { naturalLanguageToSQL, analyzeDataWithLLM, isLLMAvailable } from '@/lib/llm';
+import type { TableSchema } from '@/lib/llm';
+
+// Store conversation context (in production, use a proper session store)
+const conversationContext = new Map<string, any[]>();
 
 export async function POST(request: NextRequest) {
   try {
-    const { datasetId, message } = await request.json();
+    const { datasetId, message, tableSchemas, queryResults } = await request.json();
     
-    // Generate response based on message (database operations happen client-side)
-    const analysisResult = await analyzeMessage(message, datasetId);
+    if (!datasetId || !message) {
+      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    }
     
-    const response = {
-      messages: [{
-        id: `msg_${Date.now()}`,
-        role: 'assistant' as const,
-        content: analysisResult.content,
-        timestamp: new Date().toISOString(),
-        toolSuggestions: generateToolSuggestions(message),
-        artifacts: analysisResult.artifacts || [],
-      }]
-    };
+    // Get or create conversation context
+    const context = conversationContext.get(datasetId) || [];
+    
+    // Convert schemas to the format expected by LLM
+    const schemas: TableSchema[] = tableSchemas || [];
+    
+    // If query results are provided (from client-side execution), analyze them
+    if (queryResults) {
+      const analysis = await analyzeDataWithLLM(message, queryResults, schemas);
+      
+      // Update conversation context
+      context.push({
+        role: 'user',
+        content: message,
+        timestamp: new Date().toISOString()
+      });
+      
+      context.push({
+        role: 'assistant',
+        content: analysis.content,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Keep only last 10 messages for context
+      if (context.length > 10) {
+        context.splice(0, context.length - 10);
+      }
+      
+      conversationContext.set(datasetId, context);
+      
+      const response = {
+        messages: [{
+          id: `msg_${Date.now()}`,
+          role: 'assistant' as const,
+          content: analysis.content,
+          timestamp: new Date().toISOString(),
+          toolSuggestions: analysis.suggestions || [],
+          artifacts: queryResults.length > 0 ? [{
+            type: 'query_result',
+            data: queryResults,
+            rowCount: queryResults.length
+          }] : [],
+          metadata: {
+            rowCount: queryResults.length,
+            llmUsed: isLLMAvailable()
+          }
+        }]
+      };
+      
+      return NextResponse.json(response);
+    }
+    
+    // Generate SQL from natural language (no execution on server)
+    const sqlResult = await naturalLanguageToSQL(message, schemas);
+    
+    if (sqlResult.query && !sqlResult.error) {
+      // Return the SQL query for client-side execution
+      const response = {
+        sql: sqlResult.query,
+        explanation: sqlResult.explanation,
+        suggestions: sqlResult.suggestions,
+        shouldExecuteClient: true
+      };
+      
+      return NextResponse.json(response);
+    } else {
+      // Fallback response if SQL generation failed
+      const fallbackMessage = sqlResult.error || 
+        `I'm having trouble understanding your question. Could you please rephrase it? 
 
-    return NextResponse.json(response);
+Here are some examples of questions I can help with:
+- Show me all overdue invoices
+- What is the total amount by vendor?
+- Find transactions from last month
+- Show top 10 largest payments
+- Calculate average invoice amount
+
+I can analyze your data, create summaries, and help identify patterns.`;
+      
+      const response = {
+        messages: [{
+          id: `msg_${Date.now()}`,
+          role: 'assistant' as const,
+          content: fallbackMessage,
+          timestamp: new Date().toISOString(),
+          toolSuggestions: [],
+          artifacts: []
+        }]
+      };
+      
+      return NextResponse.json(response);
+    }
+    
   } catch (error) {
     console.error('Chat error:', error);
-    return NextResponse.json({ error: 'Chat failed' }, { status: 500 });
+    return NextResponse.json({ 
+      error: 'Chat processing failed',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 
-async function analyzeMessage(message: string, datasetId: string) {
-  const lowerMessage = message.toLowerCase();
+// Get conversation history
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const datasetId = searchParams.get('datasetId');
   
-  // Since database operations happen client-side, we provide guidance
-  // The actual data analysis will be performed by the client
-  
-  if (lowerMessage.includes('overdue')) {
-    return {
-      content: `I'll help you analyze overdue vendors. The analysis is being performed on your data locally. Look for vendors with past-due dates and outstanding amounts. You can:\n\n- Filter by days overdue (30, 60, 90+ days)\n- Sort by amount or date\n- Export the results to CSV\n\nUse the data viewer to explore your overdue accounts in detail.`,
-      artifacts: [],
-      analysisType: 'overdue' // Client can use this to trigger specific analysis
-    };
+  if (!datasetId) {
+    return NextResponse.json({ error: 'Dataset ID required' }, { status: 400 });
   }
   
-  if (lowerMessage.includes('summary') || lowerMessage.includes('overview')) {
-    return {
-      content: `I'll provide a summary of your dataset. The data is being analyzed locally in your browser. You can view:\n\n- Total number of records\n- Key financial metrics\n- Data quality indicators\n- Table relationships\n\nCheck the data viewer for detailed statistics.`,
-      artifacts: [],
-      analysisType: 'summary'
-    };
-  }
+  const context = conversationContext.get(datasetId) || [];
   
-  if (lowerMessage.includes('pivot') || lowerMessage.includes('group')) {
-    return {
-      content: `I can help you create pivot tables and grouped analysis. You can:\n\n- Group by vendor, date, or category\n- Aggregate amounts, counts, or averages\n- Create cross-tabulations\n- Export results to Excel\n\nWhat fields would you like to group by?`,
-      artifacts: [],
-      analysisType: 'pivot'
-    };
-  }
-  
-  return {
-    content: `I understand you want to: "${message}". I can help you with:\n\n- **Overdue Analysis**: Find vendors with past-due payments\n- **Data Summaries**: Get overview statistics\n- **Pivot Tables**: Group and aggregate your data\n- **Exports**: Generate CSV or Excel reports\n\nYour data is processed locally for maximum security. What specific analysis would you like to perform?`,
-    artifacts: []
-  };
-}
-
-function generateToolSuggestions(message: string) {
-  if (message.toLowerCase().includes('overdue')) {
-    return [
-      {
-        id: 'draft_reminders',
-        label: 'Draft payment reminder emails',
-        category: 'invoice' as const,
-      },
-      {
-        id: 'export_overdue_csv',
-        label: 'Export overdue vendors to CSV',
-        category: 'export' as const,
-      },
-    ];
-  }
-
-  return [];
+  return NextResponse.json({ context });
 }

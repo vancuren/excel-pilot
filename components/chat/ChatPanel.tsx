@@ -12,6 +12,7 @@ import { ChatMessage } from './ChatMessage';
 import { ActionButton } from './ActionButton';
 import { useAppStore } from '@/lib/store';
 import { api } from '@/lib/api';
+import { getTablePreview, executeQuery } from '@/lib/clientDatabase';
 
 export function ChatPanel() {
   const [inputMessage, setInputMessage] = useState('');
@@ -40,10 +41,134 @@ export function ChatPanel() {
     setIsTyping(true);
 
     try {
-      const response = await api.sendChatMessage(currentDatasetId, inputMessage);
-      response.messages.forEach(addMessage);
+      // Get table schemas for this dataset
+      const storedTables = localStorage.getItem(`dataset_${currentDatasetId}_tables`);
+      let tableSchemas: any[] = [];
+      
+      if (storedTables) {
+        const tableInfo = JSON.parse(storedTables);
+        
+        // Get schema for each table
+        for (const info of tableInfo) {
+          try {
+            const tablePreview = await getTablePreview(info.name);
+            tableSchemas.push({
+              tableName: info.name,
+              columns: tablePreview.schema.map(col => ({
+                name: col.name,
+                type: col.type,
+                nullable: col.nullable
+              })),
+              rowCount: tablePreview.stats?.totalRows
+            });
+          } catch (error) {
+            console.error(`Failed to get schema for ${info.name}:`, error);
+          }
+        }
+      }
+      
+      // First, get SQL query from LLM
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          datasetId: currentDatasetId,
+          message: inputMessage,
+          tableSchemas
+        }, (_key, value) => {
+          // Convert BigInt to number for JSON serialization
+          if (typeof value === 'bigint') {
+            return Number(value);
+          }
+          return value;
+        }),
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Chat API failed: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      
+      // Check if we need to execute SQL on client side
+      if (data.shouldExecuteClient && data.sql) {
+        try {
+          // Execute SQL query on client side
+          const queryResult = await executeQuery(data.sql);
+          const queryResults = queryResult.toArray().map(row => {
+            // Convert BigInt values to numbers
+            const cleanRow: any = {};
+            for (const [key, value] of Object.entries(row)) {
+              cleanRow[key] = typeof value === 'bigint' ? Number(value) : value;
+            }
+            return cleanRow;
+          });
+          
+          // Send results back to API for analysis
+          const analysisResponse = await fetch('/api/chat', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              datasetId: currentDatasetId,
+              message: inputMessage,
+              tableSchemas,
+              queryResults
+            }, (_key, value) => {
+              if (typeof value === 'bigint') {
+                return Number(value);
+              }
+              return value;
+            }),
+          });
+          
+          if (analysisResponse.ok) {
+            const analysisData = await analysisResponse.json();
+            if (analysisData.messages) {
+              analysisData.messages.forEach((msg: any) => {
+                addMessage({
+                  ...msg,
+                  metadata: {
+                    ...msg.metadata,
+                    query: data.sql,
+                    explanation: data.explanation
+                  }
+                });
+              });
+            }
+          }
+        } catch (queryError: any) {
+          // Query execution failed
+          const errorMessage = {
+            id: `msg_${Date.now()}`,
+            role: 'assistant' as const,
+            content: `I understood your question and generated this SQL query:\n\n\`\`\`sql\n${data.sql}\n\`\`\`\n\nHowever, the query failed with error: ${queryError.message}\n\nLet me try a different approach or please refine your question.`,
+            timestamp: new Date().toISOString(),
+          };
+          addMessage(errorMessage);
+        }
+      } else if (data.messages) {
+        // Direct response without SQL execution
+        data.messages.forEach((msg: any) => {
+          addMessage(msg);
+        });
+      }
+      
     } catch (error) {
       console.error('Chat error:', error);
+      
+      // Fallback to client-side analysis if API fails
+      const errorMessage = {
+        id: `msg_${Date.now()}_error`,
+        role: 'assistant' as const,
+        content: 'I encountered an error while processing your request. Please make sure your data is properly loaded and try again. If you haven\'t set up an API key yet, I\'ll use basic pattern matching to help analyze your data.',
+        timestamp: new Date().toISOString(),
+      };
+      
+      addMessage(errorMessage);
     }
 
     setIsTyping(false);

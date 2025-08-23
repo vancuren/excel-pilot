@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.60.0",
     "@duckdb/duckdb-wasm": "^1.29.1-dev132.0",
     "@hookform/resolvers": "^3.9.0",
     "@next/swc-wasm-nodejs": "13.5.1",
@@ -55,6 +56,7 @@
     "lucide-react": "^0.446.0",
     "next": "13.5.1",
     "next-themes": "^0.3.0",
+    "openai": "^5.15.0",
     "papaparse": "^5.5.3",
     "pdf-parse": "^1.1.1",
     "postcss": "8.4.30",

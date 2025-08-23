@@ -121,26 +121,63 @@ export async function getTablePreview(tableName: string): Promise<TablePreview> 
   const schemaResult = await connection.query(`DESCRIBE ${tableName}`);
   const schema: ColumnSchema[] = schemaResult.toArray().map((row: any) => ({
     name: row.column_name,
-    type: mapDuckDBType(row.column_type),
+    type: mapDuckDBType(row.column_type, row.column_name),
     nullable: row.null === 'YES'
   }));
 
   // Get sample data (first 100 rows)
   const dataResult = await connection.query(`SELECT * FROM ${tableName} LIMIT 100`);
-  const rows = dataResult.toArray();
+  const rows = dataResult.toArray().map(row => {
+    // Convert any BigInt values to numbers in the row data
+    const cleanRow: any = {};
+    for (const [key, value] of Object.entries(row)) {
+      cleanRow[key] = typeof value === 'bigint' ? Number(value) : value;
+    }
+    return cleanRow;
+  });
 
   // Get basic stats
   const countResult = await connection.query(`SELECT COUNT(*) as total FROM ${tableName}`);
-  const totalRows = countResult.toArray()[0].total;
+  const totalRows = Number(countResult.toArray()[0].total); // Convert BigInt to number
+  
+  // Calculate column statistics for numeric columns
+  const stats: Record<string, any> = {
+    totalRows,
+    sampleRows: rows.length
+  };
+  
+  for (const col of schema) {
+    if (col.type === 'number' || col.type === 'currency') {
+      try {
+        const statsQuery = `
+          SELECT 
+            SUM(CAST("${col.name}" AS DOUBLE)) as sum,
+            AVG(CAST("${col.name}" AS DOUBLE)) as avg,
+            MIN(CAST("${col.name}" AS DOUBLE)) as min,
+            MAX(CAST("${col.name}" AS DOUBLE)) as max
+          FROM ${tableName}
+          WHERE "${col.name}" IS NOT NULL
+        `;
+        const statsResult = await connection.query(statsQuery);
+        const colStats = statsResult.toArray()[0];
+        
+        stats[col.name] = {
+          sum: Number(colStats.sum || 0),
+          avg: Number(colStats.avg || 0),
+          min: Number(colStats.min || 0),
+          max: Number(colStats.max || 0)
+        };
+      } catch (error) {
+        console.warn(`Failed to calculate stats for column ${col.name}:`, error);
+      }
+    }
+  }
 
   return {
     name: tableName,
     schema,
     rows,
-    stats: {
-      totalRows,
-      sampleRows: rows.length
-    }
+    stats
   };
 }
 
@@ -150,8 +187,7 @@ export async function analyzeTable(tableName: string) {
   // Get basic statistics
   const stats = await connection.query(`
     SELECT 
-      COUNT(*) as row_count,
-      COUNT(DISTINCT *) as unique_rows
+      COUNT(*) as row_count
     FROM ${tableName}
   `);
 
@@ -168,7 +204,7 @@ export async function analyzeTable(tableName: string) {
       let analysis: any = {
         name: colName,
         type: colType,
-        mapped_type: mapDuckDBType(colType)
+        mapped_type: mapDuckDBType(colType, colName)
       };
 
       // Get null count and distinct values
@@ -217,7 +253,7 @@ export async function analyzeTable(tableName: string) {
       columnAnalysis.push({
         name: colName,
         type: colType,
-        mapped_type: mapDuckDBType(colType),
+        mapped_type: mapDuckDBType(colType, colName),
         error: 'Analysis failed'
       });
     }
@@ -283,17 +319,32 @@ export async function findPotentialJoins(tables: string[]): Promise<Array<{ left
   return joins;
 }
 
-function mapDuckDBType(duckdbType: string): ColumnSchema['type'] {
+function mapDuckDBType(duckdbType: string, columnName?: string): ColumnSchema['type'] {
   const type = duckdbType.toLowerCase();
+  const colName = columnName?.toLowerCase() || '';
   
-  if (type.includes('int') || type.includes('bigint') || type.includes('double') || type.includes('decimal') || type.includes('float')) {
-    return 'number';
-  }
+  // Check for date types
   if (type.includes('date') || type.includes('timestamp')) {
     return 'date';
   }
+  
+  // Check for boolean types
   if (type.includes('bool')) {
     return 'boolean';
+  }
+  
+  // Check for numeric types
+  if (type.includes('int') || type.includes('bigint') || type.includes('double') || type.includes('decimal') || type.includes('float')) {
+    // Check column name for currency indicators
+    const currencyIndicators = ['amount', 'price', 'cost', 'revenue', 'expense', 'balance', 'total', 'payment', 'fee', 'salary', 'wage'];
+    if (currencyIndicators.some(indicator => colName.includes(indicator))) {
+      return 'currency';
+    }
+    // Decimals and doubles are often currency in financial data
+    if (type.includes('decimal') || type.includes('double')) {
+      return 'currency';
+    }
+    return 'number';
   }
   
   return 'string';

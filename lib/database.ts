@@ -90,8 +90,7 @@ export async function analyzeTable(tableName: string) {
   // Get basic statistics
   const stats = await connection.query(`
     SELECT 
-      COUNT(*) as row_count,
-      COUNT(DISTINCT *) as unique_rows
+      COUNT(*) as row_count
     FROM ${tableName}
   `);
 
