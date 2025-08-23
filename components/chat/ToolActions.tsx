@@ -213,49 +213,53 @@ export function ToolActions({ message, data = [], onToolExecuted }: ToolActionsP
     <>
       <div className="flex flex-wrap gap-2 mt-4">
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="h-8 px-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 dark:bg-blue-950/20 dark:hover:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300"
           onClick={() => setShowReportDialog(true)}
           disabled={isGenerating || data.length === 0}
         >
-          <FileText className="h-4 w-4 mr-2" />
+          <FileText className="h-3.5 w-3.5 mr-1.5" />
           Generate Report
         </Button>
 
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="h-8 px-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 dark:bg-purple-950/20 dark:hover:bg-purple-950/40 dark:border-purple-800 dark:text-purple-300"
           onClick={() => setShowEmailDialog(true)}
           disabled={isGenerating || data.length === 0}
         >
-          <Mail className="h-4 w-4 mr-2" />
+          <Mail className="h-3.5 w-3.5 mr-1.5" />
           Create Email
         </Button>
 
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="h-8 px-3 bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 dark:bg-green-950/20 dark:hover:bg-green-950/40 dark:border-green-800 dark:text-green-300"
           onClick={handleGenerateInvoice}
           disabled={isGenerating || data.length === 0}
         >
           {isGenerating ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
           ) : (
-            <Receipt className="h-4 w-4 mr-2" />
+            <Receipt className="h-3.5 w-3.5 mr-1.5" />
           )}
           Generate Invoice
         </Button>
 
         <Button
-          variant="outline"
+          variant="ghost"
           size="sm"
+          className="h-8 px-3 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 dark:bg-orange-950/20 dark:hover:bg-orange-950/40 dark:border-orange-800 dark:text-orange-300"
           onClick={handleExportCSV}
           disabled={isGenerating || data.length === 0}
         >
           {isGenerating ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
           ) : (
-            <FileSpreadsheet className="h-4 w-4 mr-2" />
+            <FileSpreadsheet className="h-3.5 w-3.5 mr-1.5" />
           )}
           Export CSV
         </Button>
