@@ -172,7 +172,7 @@ export function DataChart({ table }: DataChartProps) {
       <CardContent className="flex-1 min-h-0">
         <div className="h-full">
           <ResponsiveContainer width="100%" height="100%">
-            {renderChart()}
+            {renderChart() || <div />}
           </ResponsiveContainer>
         </div>
       </CardContent>

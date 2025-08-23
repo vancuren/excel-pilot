@@ -1,4 +1,6 @@
 import { DatasetSummary, TablePreview, ChatMessage, ActionSuggestion, Artifact, AuditEvent } from '@/types';
+import { getTablePreview } from './database';
+import type { ParseProgress } from './fileParser';
 
 // Mock data for development
 const mockTables = {
@@ -47,27 +49,59 @@ const mockTables = {
 };
 
 class ApiService {
-  async uploadFile(file: File): Promise<{ datasetId: string; summary: DatasetSummary }> {
-    // Simulate upload delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    const datasetId = `dataset_${Date.now()}`;
-    const summary: DatasetSummary = {
-      tables: [
-        { name: 'ap_ledger', rows: 4, columns: 8 },
-        { name: 'invoices_q3', rows: 3, columns: 6 },
-      ],
-      inferredJoins: [
-        { left: 'ap_ledger', right: 'invoices_q3', on: ['vendor_id', 'customer_id'] }
-      ]
+  async uploadFile(
+    file: File, 
+    onProgress?: (progress: ParseProgress) => void
+  ): Promise<{ 
+    datasetId: string; 
+    summary: DatasetSummary; 
+    sheets?: any[];
+    metadata?: {
+      type?: string;
+      warnings?: string[];
+      tableCount?: number;
+      originalFileName?: string;
     };
-
-    return { datasetId, summary };
+  }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Simulate progress for upload (since we can't track server-side parsing progress via fetch)
+    if (onProgress) {
+      onProgress({ loaded: 0, total: file.size, percentage: 0, phase: 'reading' });
+    }
+    
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Upload failed');
+    }
+    
+    const result = await response.json();
+    
+    // Simulate parsing progress completion
+    if (onProgress) {
+      onProgress({ loaded: file.size, total: file.size, percentage: 100, phase: 'complete' });
+    }
+    
+    return result;
   }
 
   async getTables(datasetId: string): Promise<{ tables: TablePreview[] }> {
-    await new Promise(resolve => setTimeout(resolve, 500));
-    return { tables: Object.values(mockTables) };
+    const response = await fetch(`/api/tables/${datasetId}`);
+    
+    if (!response.ok) {
+      // Fallback to mock data for development
+      console.warn('Failed to fetch real tables, using mock data');
+      await new Promise(resolve => setTimeout(resolve, 500));
+      return { tables: Object.values(mockTables) };
+    }
+    
+    return await response.json();
   }
 
   async sendChatMessage(datasetId: string, message: string): Promise<{

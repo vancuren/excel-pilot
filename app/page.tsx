@@ -19,19 +19,19 @@ export default function Home() {
         
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
           <div className="text-center mb-12 space-y-4">
-            <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-blue-600 via-purple-600 to-green-600 bg-clip-text text-transparent">
+            <h1 className="text-4xl sm:text-5xl font-bold bg-gradient-to-r from-green-600 via-green-800 to-green-600 bg-clip-text text-transparent">
               Transform Your Financial Data
             </h1>
             <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-              Upload spreadsheets, ask questions, and automate accounting workflows with AI-powered insights
+              Upload you spreadsheets or PDFs, ask questions, and then automate accounting workflows with AI-powered insights
             </p>
           </div>
 
-          <div className="grid lg:grid-cols-2 gap-12 items-start">
+          <div className="grid lg:grid-cols-1 gap-12 items-start">
             <div className="space-y-8">
               <FileUploader />
               
-              <div className="grid sm:grid-cols-2 gap-4">
+              {/* <div className="grid sm:grid-cols-2 gap-4">
                 <Card>
                   <CardContent className="p-6">
                     <div className="flex items-start gap-3">
@@ -63,10 +63,10 @@ export default function Home() {
                     </div>
                   </CardContent>
                 </Card>
-              </div>
+              </div> */}
             </div>
 
-            <div className="space-y-6">
+            {/* <div className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -112,7 +112,7 @@ export default function Home() {
                   </div>
                 </CardContent>
               </Card>
-            </div>
+            </div> */}
           </div>
         </main>
       </div>

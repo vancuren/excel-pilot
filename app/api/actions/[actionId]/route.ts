@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { actionId: string } }
 ) {
   try {
@@ -43,7 +43,7 @@ export async function POST(
       at: new Date().toISOString(),
       summary,
       artifacts: mockArtifacts,
-      category: 'action'
+      category: 'action' as const
     };
 
     return NextResponse.json({ artifacts: mockArtifacts, audit });

@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.29.1-dev132.0",
     "@hookform/resolvers": "^3.9.0",
     "@next/swc-wasm-nodejs": "13.5.1",
     "@radix-ui/react-accordion": "^1.2.0",
@@ -55,6 +56,7 @@
     "next": "13.5.1",
     "next-themes": "^0.3.0",
     "papaparse": "^5.5.3",
+    "pdf-parse": "^1.1.1",
     "postcss": "8.4.30",
     "react": "18.2.0",
     "react-day-picker": "^8.10.1",
@@ -69,6 +71,7 @@
     "tailwindcss-animate": "^1.0.7",
     "typescript": "5.2.2",
     "vaul": "^0.9.9",
+    "xlsx": "^0.18.5",
     "zod": "^3.23.8",
     "zustand": "^5.0.8"
   }
