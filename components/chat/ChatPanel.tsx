@@ -1,13 +1,11 @@
 'use client';
 
 import { useState } from 'react';
-import { Send, Sparkles, FileDown, Receipt, Mail, CheckSquare, Bot, Zap } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Send, Sparkles, FileDown, Receipt, CheckSquare, Bot, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { ChatMessage } from './ChatMessage';
 import { ActionButton } from './ActionButton';
 import { useAppStore } from '@/lib/store';
@@ -25,6 +23,70 @@ export function ChatPanel() {
     addAuditEvent,
     setLoading 
   } = useAppStore();
+
+  // Helper function to format query results for display
+  const formatQueryResults = (results: any[], explanation?: string) => {
+    if (!results || results.length === 0) {
+      return explanation ? `${explanation}\n\nNo results found.` : 'No results found for your query.';
+    }
+    
+    let content = explanation ? `${explanation}\n\n` : '';
+    content += `Found **${results.length} result${results.length !== 1 ? 's' : ''}**\n\n`;
+    
+    // Show first few results in a readable format
+    const preview = results.slice(0, 5);
+    if (preview.length > 0) {
+      content += '### Results:\n\n';
+      
+      // Create a simple table view for the data
+      const columns = Object.keys(preview[0]);
+      
+      // Format as markdown table
+      content += '| ' + columns.join(' | ') + ' |\n';
+      content += '| ' + columns.map(() => '---').join(' | ') + ' |\n';
+      
+      preview.forEach(row => {
+        const values = columns.map(col => {
+          const value = row[col];
+          if (value === null || value === undefined) return 'N/A';
+          if (typeof value === 'number') {
+            return value.toLocaleString('en-US', { maximumFractionDigits: 2 });
+          }
+          return String(value);
+        });
+        content += '| ' + values.join(' | ') + ' |\n';
+      });
+      
+      if (results.length > 5) {
+        content += `\n*...and ${results.length - 5} more row${results.length - 5 !== 1 ? 's' : ''}*\n`;
+      }
+    }
+    
+    // Add summary statistics for numeric columns
+    const numericColumns = Object.keys(results[0]).filter(key => 
+      typeof results[0][key] === 'number'
+    );
+    
+    if (numericColumns.length > 0) {
+      content += '\n### Summary:\n\n';
+      numericColumns.forEach(col => {
+        const values = results.map(r => r[col]).filter(v => v !== null && v !== undefined);
+        if (values.length > 0) {
+          const sum = values.reduce((a, b) => a + b, 0);
+          const avg = sum / values.length;
+          const min = Math.min(...values);
+          const max = Math.max(...values);
+          
+          content += `**${col}:**\n`;
+          content += `- Total: ${sum.toLocaleString('en-US', { maximumFractionDigits: 2 })}\n`;
+          content += `- Average: ${avg.toLocaleString('en-US', { maximumFractionDigits: 2 })}\n`;
+          content += `- Range: ${min.toLocaleString('en-US', { maximumFractionDigits: 2 })} to ${max.toLocaleString('en-US', { maximumFractionDigits: 2 })}\n\n`;
+        }
+      });
+    }
+    
+    return content;
+  };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || !currentDatasetId) return;
@@ -67,8 +129,8 @@ export function ChatPanel() {
         }
       }
       
-      // First, get SQL query from LLM
-      const response = await fetch('/api/chat', {
+      // First, get SQL query from LLM (use tool-enabled endpoint)
+      const response = await fetch('/api/chat-with-tools', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -97,7 +159,7 @@ export function ChatPanel() {
         try {
           // Execute SQL query on client side
           const queryResult = await executeQuery(data.sql);
-          const queryResults = queryResult.toArray().map(row => {
+          const queryResults = queryResult.toArray().map((row: any) => {
             // Convert BigInt values to numbers
             const cleanRow: any = {};
             for (const [key, value] of Object.entries(row)) {
@@ -106,39 +168,144 @@ export function ChatPanel() {
             return cleanRow;
           });
           
-          // Send results back to API for analysis
-          const analysisResponse = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              datasetId: currentDatasetId,
-              message: inputMessage,
-              tableSchemas,
-              queryResults
-            }, (_key, value) => {
-              if (typeof value === 'bigint') {
-                return Number(value);
+          // Check if there are pending tools to execute after SQL
+          if (data.pendingTools && data.pendingTools.length > 0) {
+            console.log('Executing pending tools with query results:', {
+              tools: data.pendingTools,
+              resultsCount: queryResults.length
+            });
+            
+            // Execute pending tools with query results
+            const toolResponse = await fetch('/api/chat-with-tools', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                pendingTools: data.pendingTools,
+                queryResults
+              }, (_key, value) => {
+                if (typeof value === 'bigint') {
+                  return Number(value);
+                }
+                return value;
+              }),
+            });
+            
+            if (toolResponse.ok) {
+              const toolData = await toolResponse.json();
+              if (toolData.messages) {
+                toolData.messages.forEach((msg: any) => {
+                  addMessage(msg);
+                });
               }
-              return value;
-            }),
-          });
-          
-          if (analysisResponse.ok) {
-            const analysisData = await analysisResponse.json();
-            if (analysisData.messages) {
-              analysisData.messages.forEach((msg: any) => {
+            } else {
+              console.error('Tool execution failed:', await toolResponse.text());
+            }
+          } else {
+            // No pending tools - check if this was originally a tool request
+            const lowerMessage = inputMessage.toLowerCase();
+            const isEmailRequest = 
+              lowerMessage.includes('email') || 
+              lowerMessage.includes('send') || 
+              lowerMessage.includes('notify') || 
+              lowerMessage.includes('remind');
+            const isPurchaseRequest = 
+              lowerMessage.includes('purchase') || 
+              lowerMessage.includes('order') || 
+              lowerMessage.includes('buy') ||
+              lowerMessage.includes('reorder');
+            
+            if (isEmailRequest || isPurchaseRequest) {
+              // This was a tool request - re-process with the query results
+              console.log('Re-processing tool request with query results');
+              
+              // Call the tool endpoint again with the query results
+              const toolResponse = await fetch('/api/chat-with-tools', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  datasetId: currentDatasetId,
+                  message: inputMessage,
+                  tableSchemas,
+                  queryResults  // Include the query results this time
+                }, (_key, value) => {
+                  if (typeof value === 'bigint') {
+                    return Number(value);
+                  }
+                  return value;
+                }),
+              });
+              
+              if (toolResponse.ok) {
+                const toolData = await toolResponse.json();
+                if (toolData.messages) {
+                  toolData.messages.forEach((msg: any) => {
+                    addMessage(msg);
+                  });
+                }
+              } else {
+                // Tool execution failed
                 addMessage({
-                  ...msg,
-                  queryData: queryResults, // Add query results to message
+                  id: `msg_${Date.now()}`,
+                  role: 'assistant' as const,
+                  content: '❌ Could not execute the requested action. Please check the data and try again.',
+                  timestamp: new Date().toISOString()
+                });
+              }
+            } else {
+              // Not a tool request - send to /api/chat for natural language analysis
+              const analysisResponse = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                  datasetId: currentDatasetId,
+                  message: inputMessage,
+                  tableSchemas,
+                  queryResults
+                }, (_key, value) => {
+                  if (typeof value === 'bigint') {
+                    return Number(value);
+                  }
+                  return value;
+                }),
+              });
+              
+              if (analysisResponse.ok) {
+                const analysisData = await analysisResponse.json();
+                if (analysisData.messages) {
+                  analysisData.messages.forEach((msg: any) => {
+                    addMessage({
+                      ...msg,
+                      queryData: queryResults,
+                      metadata: {
+                        ...msg.metadata,
+                        query: data.sql,
+                        explanation: data.explanation
+                      }
+                    });
+                  });
+                }
+              } else {
+                // Fallback to basic formatting if analysis fails
+                const resultMessage = {
+                  id: `msg_${Date.now()}`,
+                  role: 'assistant' as const,
+                  content: formatQueryResults(queryResults, data.explanation),
+                  timestamp: new Date().toISOString(),
+                  queryData: queryResults,
                   metadata: {
-                    ...msg.metadata,
                     query: data.sql,
                     explanation: data.explanation
-                  }
-                });
-              });
+                  },
+                  suggestions: data.suggestions
+                };
+                addMessage(resultMessage);
+              }
             }
           }
         } catch (queryError: any) {
@@ -257,13 +424,13 @@ export function ChatPanel() {
                     Ask about overdue vendors, cash reconciliation, or journal entries
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 justify-center max-w-[250px]">
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Overdue analysis</Badge>
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Cash flow</Badge>
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Reconciliation</Badge>
-                </div>
+              <div className="flex flex-wrap gap-2 justify-center max-w-[250px]">
+                <Badge variant="secondary" className="text-xs bg-muted/60">Overdue analysis</Badge>
+                <Badge variant="secondary" className="text-xs bg-muted/60">Cash flow</Badge>
+                <Badge variant="secondary" className="text-xs bg-muted/60">Reconciliation</Badge>
               </div>
-            ) : (
+            </div>
+          ) : (
               <>
                 {chatMessages.map((message) => (
                   <ChatMessage key={message.id} message={message} />
@@ -318,7 +485,7 @@ export function ChatPanel() {
       <div className="flex-shrink-0 p-6 border-t border-border/50 bg-background/95 backdrop-blur-md">
         <div className="relative">
           <Input
-            placeholder={currentDatasetId ? "Ask about your financial data..." : "Upload data first..."}
+            placeholder={currentDatasetId ? "Ask about your financial data... (Enter to send)" : "Upload data first..."}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => {
@@ -338,6 +505,9 @@ export function ChatPanel() {
           >
             <Send className="h-4 w-4" />
           </Button>
+          <div className="absolute -bottom-5 left-0 text-[11px] text-muted-foreground/80">
+            Press Enter to send • Shift+Enter for new line • ⌘K for Command
+          </div>
         </div>
       </div>
     </div>

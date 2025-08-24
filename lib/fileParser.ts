@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
-import Papa from 'papaparse';
+import * as Papa from 'papaparse';
+import Anthropic from '@anthropic-ai/sdk';
 
 export interface ParsedFile {
   name: string;
@@ -231,7 +232,9 @@ async function parseExcel(
       cellFormula: true,
       cellHTML: false,
       cellDates: true,
-      sheetStubs: true
+      dateNF: 'mm/dd/yyyy',  // Ensure consistent date format
+      sheetStubs: true,
+      raw: false  // Process values instead of raw data
     });
     
     const sheets: ParsedSheet[] = [];
@@ -277,7 +280,7 @@ async function parseExcel(
       const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
         defval: null,
         raw: false,
-        dateNF: 'yyyy-mm-dd',
+        dateNF: 'mm/dd/yyyy',  // Use more common date format to preserve full dates
         blankrows: false
       });
       
@@ -527,9 +530,22 @@ function cleanAndValidateData(
   const dataTypes: Record<string, string> = {};
   const typeCounters: Record<string, Record<string, number>> = {};
   
-  // Initialize type counters
+  // Extended type counters for better DuckDB mapping
   headers.forEach(header => {
-    typeCounters[header] = { string: 0, number: 0, date: 0, boolean: 0, null: 0 };
+    typeCounters[header] = { 
+      string: 0, 
+      integer: 0, 
+      decimal: 0, 
+      date: 0, 
+      timestamp: 0, 
+      time: 0,
+      boolean: 0, 
+      json: 0,
+      uuid: 0,
+      email: 0,
+      url: 0,
+      null: 0 
+    };
   });
   
   // Clean data and count types
@@ -549,63 +565,122 @@ function cleanAndValidateData(
       } else if (typeof value === 'boolean') {
         typeCounters[header].boolean++;
       } else if (typeof value === 'number') {
-        // Validate number
+        // Validate number and distinguish integer vs decimal
         if (!isFinite(value)) {
           row[header] = null;
           typeCounters[header].null++;
+        } else if (Number.isInteger(value)) {
+          typeCounters[header].integer++;
         } else {
-          typeCounters[header].number++;
+          typeCounters[header].decimal++;
         }
       } else if (typeof value === 'string') {
         value = value.trim();
         
-        // Try to parse as number
-        const numericValue = parseNumericValue(value);
-        if (numericValue !== null) {
-          row[header] = numericValue;
-          typeCounters[header].number++;
+        // Enhanced type detection - CHECK DATES FIRST before numeric
+        if (isTimestamp(value)) {
+          // Keep as string but mark as timestamp
+          row[header] = value;
+          typeCounters[header].timestamp++;
         } else if (isDateString(value)) {
           // Keep as string but mark as date
           row[header] = value;
           typeCounters[header].date++;
+        } else if (isTimeString(value)) {
+          // Keep as string but mark as time
+          row[header] = value;
+          typeCounters[header].time++;
+        } else if (isUUID(value)) {
+          row[header] = value;
+          typeCounters[header].uuid++;
+        } else if (isEmail(value)) {
+          row[header] = value;
+          typeCounters[header].email++;
+        } else if (isURL(value)) {
+          row[header] = value;
+          typeCounters[header].url++;
         } else if (value.toLowerCase() === 'true' || value.toLowerCase() === 'false') {
           row[header] = value.toLowerCase() === 'true';
           typeCounters[header].boolean++;
-        } else {
+        } else if (isJSONString(value)) {
           row[header] = value;
-          typeCounters[header].string++;
+          typeCounters[header].json++;
+        } else {
+          // Check for numeric LAST after all other types
+          const numericValue = parseNumericValue(value);
+          if (numericValue !== null) {
+            row[header] = numericValue;
+            if (Number.isInteger(numericValue)) {
+              typeCounters[header].integer++;
+            } else {
+              typeCounters[header].decimal++;
+            }
+          } else {
+            row[header] = value;
+            typeCounters[header].string++;
+          }
         }
+      } else if (value instanceof Date) {
+        // Handle Date objects - preserve as formatted date string for better compatibility
+        const dateStr = `${(value.getMonth() + 1).toString().padStart(2, '0')}/${value.getDate().toString().padStart(2, '0')}/${value.getFullYear()}`;
+        row[header] = dateStr;
+        typeCounters[header].date++;
       }
     }
     
     return true;
   });
   
-  // Determine dominant type for each column
+  // Determine dominant type for each column with smarter logic
   headers.forEach(header => {
     const counts = typeCounters[header];
-    const totalNonNull = counts.string + counts.number + counts.date + counts.boolean;
+    const totalNonNull = Object.entries(counts)
+      .filter(([key]) => key !== 'null')
+      .reduce((sum, [, count]) => sum + count, 0);
     
     if (totalNonNull === 0) {
-      dataTypes[header] = 'null';
+      dataTypes[header] = 'VARCHAR';
     } else {
-      // Find dominant type (excluding null)
-      let dominantType = 'string';
-      let maxCount = counts.string;
+      // Determine DuckDB type based on dominant type and column name hints
+      const headerLower = header.toLowerCase();
       
-      if (counts.number > maxCount) {
-        dominantType = 'number';
-        maxCount = counts.number;
+      // Check for specific patterns in column names
+      if (counts.timestamp > totalNonNull * 0.5 || 
+          (counts.timestamp > 0 && (headerLower.includes('timestamp') || headerLower.includes('created') || headerLower.includes('updated')))) {
+        dataTypes[header] = 'TIMESTAMP';
+      } else if (counts.date > totalNonNull * 0.5 || 
+                 (counts.date > 0 && (headerLower.includes('date') || headerLower.includes('due') || headerLower.includes('deadline')))) {
+        dataTypes[header] = 'DATE';
+      } else if (counts.time > totalNonNull * 0.5 || 
+                 (counts.time > 0 && headerLower.includes('time'))) {
+        dataTypes[header] = 'TIME';
+      } else if (counts.boolean > totalNonNull * 0.5) {
+        dataTypes[header] = 'BOOLEAN';
+      } else if (counts.uuid > totalNonNull * 0.5 || 
+                 (counts.uuid > 0 && headerLower.includes('id') && counts.uuid > counts.integer)) {
+        dataTypes[header] = 'UUID';
+      } else if (counts.integer > totalNonNull * 0.5) {
+        // Choose appropriate integer type based on column name
+        if (headerLower.includes('id') || headerLower.includes('count') || headerLower.includes('quantity')) {
+          dataTypes[header] = 'BIGINT';
+        } else {
+          dataTypes[header] = 'INTEGER';
+        }
+      } else if (counts.decimal > totalNonNull * 0.3 || 
+                 (counts.decimal > 0 && (headerLower.includes('amount') || headerLower.includes('price') || 
+                  headerLower.includes('cost') || headerLower.includes('balance') || headerLower.includes('total') ||
+                  headerLower.includes('payment') || headerLower.includes('fee') || headerLower.includes('salary')))) {
+        dataTypes[header] = 'DECIMAL(18,2)';
+      } else if (counts.json > totalNonNull * 0.5) {
+        dataTypes[header] = 'JSON';
+      } else if (counts.email > totalNonNull * 0.5) {
+        dataTypes[header] = 'VARCHAR'; // Store emails as VARCHAR with validation
+      } else if (counts.url > totalNonNull * 0.5) {
+        dataTypes[header] = 'VARCHAR'; // Store URLs as VARCHAR
+      } else {
+        // Default to VARCHAR for mixed or string types
+        dataTypes[header] = 'VARCHAR';
       }
-      if (counts.date > maxCount) {
-        dominantType = 'date';
-        maxCount = counts.date;
-      }
-      if (counts.boolean > maxCount) {
-        dominantType = 'boolean';
-      }
-      
-      dataTypes[header] = dominantType;
     }
   });
   
@@ -639,11 +714,11 @@ function parseNumericValue(str: string): number | null {
 function isDateString(str: string): boolean {
   const trimmed = str.trim();
   
-  // Check for common date formats
+  // Check for common date formats (without time)
   const datePatterns = [
     /^\d{1,2}\/\d{1,2}\/\d{4}$/,     // MM/dd/yyyy
     /^\d{1,2}-\d{1,2}-\d{4}$/,      // MM-dd-yyyy
-    /^\d{4}-\d{1,2}-\d{1,2}$/,      // yyyy-MM-dd
+    /^\d{4}-\d{1,2}-\d{1,2}$/,      // yyyy-MM-dd (ISO date)
     /^\d{1,2}\/\d{1,2}\/\d{2}$/,    // MM/dd/yy
     /^\d{1,2}\.\d{1,2}\.\d{4}$/,    // dd.MM.yyyy
     /^\d{4}\/\d{1,2}\/\d{1,2}$/,    // yyyy/MM/dd
@@ -665,29 +740,151 @@ function isDateString(str: string): boolean {
   return year >= 1900 && year <= 2100;
 }
 
-export function detectDatasetType(sheets: ParsedSheet[]): 'financial' | 'inventory' | 'sales' | 'hr' | 'general' {
+function isTimestamp(str: string): boolean {
+  const trimmed = str.trim();
+  
+  // Check for timestamp formats (date with time)
+  const timestampPatterns = [
+    /^\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(\.\d{3})?Z?$/,  // ISO 8601
+    /^\d{1,2}\/\d{1,2}\/\d{4}\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$/i,  // MM/dd/yyyy HH:mm:ss AM/PM
+    /^\d{4}-\d{1,2}-\d{1,2}\s+\d{1,2}:\d{2}(:\d{2})?$/,  // yyyy-MM-dd HH:mm:ss
+    /^\w{3}\s+\d{1,2},?\s+\d{4}\s+\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?$/i,  // Jan 1, 2024 12:00:00 PM
+  ];
+  
+  const matchesPattern = timestampPatterns.some(pattern => pattern.test(trimmed));
+  if (!matchesPattern) return false;
+  
+  const parsed = Date.parse(trimmed);
+  if (isNaN(parsed)) return false;
+  
+  const date = new Date(parsed);
+  const year = date.getFullYear();
+  return year >= 1900 && year <= 2100;
+}
+
+function isTimeString(str: string): boolean {
+  const trimmed = str.trim();
+  
+  // Check for time-only formats
+  const timePatterns = [
+    /^\d{1,2}:\d{2}(:\d{2})?$/,  // HH:mm:ss or HH:mm
+    /^\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)$/i,  // HH:mm:ss AM/PM
+  ];
+  
+  return timePatterns.some(pattern => pattern.test(trimmed));
+}
+
+function isUUID(str: string): boolean {
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidPattern.test(str.trim());
+}
+
+function isEmail(str: string): boolean {
+  const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailPattern.test(str.trim());
+}
+
+function isURL(str: string): boolean {
+  try {
+    new URL(str.trim());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isJSONString(str: string): boolean {
+  const trimmed = str.trim();
+  if ((!trimmed.startsWith('{') || !trimmed.endsWith('}')) && 
+      (!trimmed.startsWith('[') || !trimmed.endsWith(']'))) {
+    return false;
+  }
+  try {
+    JSON.parse(trimmed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Initialize Anthropic client for dataset detection
+const anthropic = process.env.ANTHROPIC_API_KEY 
+  ? new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY,
+    })
+  : null;
+
+export async function detectDatasetType(sheets: ParsedSheet[]): Promise<'financial' | 'inventory' | 'sales' | 'hr' | 'general'> {
+  // Try LLM-based detection first if available
+  if (anthropic) {
+    try {
+      const allHeaders = sheets.flatMap(sheet => sheet.headers);
+      const sampleData = sheets[0]?.data.slice(0, 3) || [];
+      
+      const prompt = `Analyze the following dataset and categorize it into one of these types: financial, inventory, sales, hr, or general.
+
+Column Headers:
+${allHeaders.join(', ')}
+
+Sample Data (first 3 rows):
+${JSON.stringify(sampleData, null, 2)}
+
+Analyze the column names, data patterns, and context to determine the most appropriate category.
+
+Respond with ONLY one word: either "financial", "inventory", "sales", "hr", or "general".
+
+Consider:
+- Financial: invoices, payments, accounting, ledgers, expenses, vendors, accounts payable/receivable
+- Sales: customer data, orders, revenue, products sold, sales transactions
+- Inventory: stock levels, warehouse data, SKUs, product quantities
+- HR: employee data, salaries, departments, positions, attendance
+- General: if it doesn't clearly fit the above categories`;
+
+      const response = await anthropic.messages.create({
+        model: 'claude-3-5-haiku-20241022',
+        max_tokens: 10,
+        temperature: 0,
+        messages: [
+          {
+            role: 'user',
+            content: prompt
+          }
+        ]
+      });
+
+      const content = response.content[0];
+      if (content.type === 'text') {
+        const category = content.text.trim().toLowerCase();
+        if (['financial', 'inventory', 'sales', 'hr', 'general'].includes(category)) {
+          return category as 'financial' | 'inventory' | 'sales' | 'hr' | 'general';
+        }
+      }
+    } catch (error) {
+      console.warn('LLM dataset detection failed, falling back to pattern matching:', error);
+    }
+  }
+  
+  // Fallback to pattern matching
   const allHeaders = sheets.flatMap(sheet => sheet.headers.map(h => h.toLowerCase()));
   
-  // Financial indicators
-  const financialTerms = ['amount', 'balance', 'debit', 'credit', 'invoice', 'payment', 'vendor', 'account', 'ledger', 'revenue', 'expense', 'cost'];
+  // Enhanced pattern matching with more comprehensive terms
+  const financialTerms = ['amount', 'balance', 'debit', 'credit', 'invoice', 'payment', 'vendor', 'account', 'ledger', 'revenue', 'expense', 'cost', 'due_date', 'overdue', 'payable', 'receivable', 'transaction', 'billing'];
+  const salesTerms = ['sales', 'customer', 'product', 'quantity', 'price', 'order', 'purchase', 'buyer', 'sold', 'revenue', 'commission', 'discount', 'cart'];
+  const inventoryTerms = ['inventory', 'stock', 'warehouse', 'item', 'sku', 'quantity', 'reorder', 'supplier', 'batch', 'lot', 'shelf', 'location'];
+  const hrTerms = ['employee', 'salary', 'wage', 'department', 'position', 'hire', 'staff', 'payroll', 'benefits', 'attendance', 'leave', 'performance', 'manager'];
+  
   const financialCount = financialTerms.filter(term => 
     allHeaders.some(header => header.includes(term))
   ).length;
   
-  // Sales indicators
-  const salesTerms = ['sales', 'customer', 'product', 'quantity', 'price', 'order', 'purchase'];
   const salesCount = salesTerms.filter(term => 
     allHeaders.some(header => header.includes(term))
   ).length;
   
-  // Inventory indicators
-  const inventoryTerms = ['inventory', 'stock', 'warehouse', 'item', 'sku', 'quantity'];
   const inventoryCount = inventoryTerms.filter(term => 
     allHeaders.some(header => header.includes(term))
   ).length;
   
-  // HR indicators
-  const hrTerms = ['employee', 'salary', 'wage', 'department', 'position', 'hire'];
   const hrCount = hrTerms.filter(term => 
     allHeaders.some(header => header.includes(term))
   ).length;
@@ -700,7 +897,10 @@ export function detectDatasetType(sheets: ParsedSheet[]): 'financial' | 'invento
     hr: hrCount
   };
   
-  const maxCategory = Object.entries(scores).reduce((a, b) => scores[a[0] as keyof typeof scores] > scores[b[0] as keyof typeof scores] ? a : b)[0];
+  const maxScore = Math.max(...Object.values(scores));
+  if (maxScore === 0) return 'general';
   
-  return maxCategory as 'financial' | 'inventory' | 'sales' | 'hr' | 'general' || 'general';
+  const maxCategory = Object.entries(scores).find(([, score]) => score === maxScore)?.[0];
+  
+  return (maxCategory as 'financial' | 'inventory' | 'sales' | 'hr') || 'general';
 }

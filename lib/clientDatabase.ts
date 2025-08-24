@@ -1,10 +1,11 @@
 'use client';
 
-import * as duckdb from '@duckdb/duckdb-wasm';
+// Import the browser-only build to keep Node bundles out of the client
+import * as duckdb from '@duckdb/duckdb-wasm/dist/duckdb-browser.mjs';
 import { TablePreview, ColumnSchema } from '@/types';
 
-let db: duckdb.AsyncDuckDB | null = null;
-let conn: duckdb.AsyncDuckDBConnection | null = null;
+let db: any | null = null;
+let conn: any | null = null;
 
 export async function initClientDatabase() {
   if (db) return db;
@@ -35,7 +36,7 @@ export async function getClientConnection() {
   return conn!;
 }
 
-export async function createTableFromData(tableName: string, data: any[]) {
+export async function createTableFromData(tableName: string, data: any[], dataTypes?: Record<string, string>) {
   const connection = await getClientConnection();
   
   if (data.length === 0) {
@@ -49,65 +50,104 @@ export async function createTableFromData(tableName: string, data: any[]) {
     // Ignore error if table doesn't exist
   }
 
-  // Use DuckDB's ability to parse JSON directly from a string literal
-  // We'll escape the JSON and embed it directly in the query
-  const jsonString = JSON.stringify(data);
-  const escapedJson = jsonString.replace(/'/g, "''");
-  
-  // Create table from JSON using a simpler approach
-  const createQuery = `CREATE TABLE ${tableName} AS SELECT * FROM read_json_auto('${escapedJson}')`;
-  
-  try {
-    await connection.query(createQuery);
-  } catch (error) {
-    console.error('Failed to create table with read_json_auto, trying alternative method:', error);
+  // If dataTypes are provided, create table with explicit schema
+  if (dataTypes && Object.keys(dataTypes).length > 0) {
+    const columns = Object.keys(dataTypes);
     
-    // Fallback: Create table structure first, then insert data
-    const firstRow = data[0];
-    const columns = Object.keys(firstRow);
-    
-    // Build INSERT statement with literal values
-    const values = data.map(row => {
-      const vals = columns.map(col => {
-        const val = row[col];
-        if (val === null || val === undefined) {
-          return 'NULL';
-        } else if (typeof val === 'string') {
-          return `'${val.replace(/'/g, "''")}'`;
-        } else if (typeof val === 'boolean') {
-          return val ? 'TRUE' : 'FALSE';
-        } else {
-          return val;
-        }
-      });
-      return `(${vals.join(', ')})`;
+    // Create table with explicit column types
+    const columnDefs = columns.map(col => {
+      let type = dataTypes[col];
+      // Use DECIMAL(18,4) for better precision support
+      if (type === 'DECIMAL(18,2)') {
+        type = 'DECIMAL(18,4)';
+      }
+      return `"${col}" ${type}`;
     }).join(', ');
     
-    // Create table with first row of values to infer types
-    const firstRowValues = `(${columns.map(col => {
-      const val = firstRow[col];
-      if (val === null || val === undefined) return 'NULL';
-      if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
-      if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
-      return val;
-    }).join(', ')})`;
+    const createTableQuery = `CREATE TABLE ${tableName} (${columnDefs})`;
+    await connection.query(createTableQuery);
     
-    await connection.query(`CREATE TABLE ${tableName} AS SELECT * FROM (VALUES ${firstRowValues}) AS t(${columns.map(c => `"${c}"`).join(', ')})`);
-    
-    // Insert remaining rows if any
-    if (data.length > 1) {
-      const remainingValues = data.slice(1).map(row => {
+    // Insert data
+    if (data.length > 0) {
+      const values = data.map(row => {
         const vals = columns.map(col => {
           const val = row[col];
-          if (val === null || val === undefined) return 'NULL';
-          if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
-          if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
-          return val;
+          if (val === null || val === undefined) {
+            return 'NULL';
+          } else if (typeof val === 'string') {
+            return `'${val.replace(/'/g, "''")}'`;
+          } else if (typeof val === 'boolean') {
+            return val ? 'TRUE' : 'FALSE';
+          } else {
+            return val;
+          }
         });
         return `(${vals.join(', ')})`;
       }).join(', ');
       
-      await connection.query(`INSERT INTO ${tableName} VALUES ${remainingValues}`);
+      await connection.query(`INSERT INTO ${tableName} VALUES ${values}`);
+    }
+  } else {
+    // Use DuckDB's ability to parse JSON directly from a string literal
+    // We'll escape the JSON and embed it directly in the query
+    const jsonString = JSON.stringify(data);
+    const escapedJson = jsonString.replace(/'/g, "''");
+    
+    // Create table from JSON using a simpler approach
+    const createQuery = `CREATE TABLE ${tableName} AS SELECT * FROM read_json_auto('${escapedJson}', sample_size=-1)`;
+    
+    try {
+      await connection.query(createQuery);
+    } catch (error) {
+      console.error('Failed to create table with read_json_auto, trying alternative method:', error);
+      
+      // Fallback: Create table structure first, then insert data
+      const firstRow = data[0];
+      const columns = Object.keys(firstRow);
+      
+      // Build INSERT statement with literal values
+      const values = data.map(row => {
+        const vals = columns.map(col => {
+          const val = row[col];
+          if (val === null || val === undefined) {
+            return 'NULL';
+          } else if (typeof val === 'string') {
+            return `'${val.replace(/'/g, "''")}'`;
+          } else if (typeof val === 'boolean') {
+            return val ? 'TRUE' : 'FALSE';
+          } else {
+            return val;
+          }
+        });
+        return `(${vals.join(', ')})`;
+      }).join(', ');
+      
+      // Create table with first row of values to infer types
+      const firstRowValues = `(${columns.map(col => {
+        const val = firstRow[col];
+        if (val === null || val === undefined) return 'NULL';
+        if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+        if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+        return val;
+      }).join(', ')})`;
+      
+      await connection.query(`CREATE TABLE ${tableName} AS SELECT * FROM (VALUES ${firstRowValues}) AS t(${columns.map(c => `"${c}"`).join(', ')})`);
+      
+      // Insert remaining rows if any
+      if (data.length > 1) {
+        const remainingValues = data.slice(1).map(row => {
+          const vals = columns.map(col => {
+            const val = row[col];
+            if (val === null || val === undefined) return 'NULL';
+            if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`;
+            if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+            return val;
+          });
+          return `(${vals.join(', ')})`;
+        }).join(', ');
+        
+        await connection.query(`INSERT INTO ${tableName} VALUES ${remainingValues}`);
+      }
     }
   }
 
@@ -127,7 +167,7 @@ export async function getTablePreview(tableName: string): Promise<TablePreview> 
 
   // Get sample data (first 100 rows)
   const dataResult = await connection.query(`SELECT * FROM ${tableName} LIMIT 100`);
-  const rows = dataResult.toArray().map(row => {
+  const rows = dataResult.toArray().map((row: any) => {
     // Convert any BigInt values to numbers in the row data
     const cleanRow: any = {};
     for (const [key, value] of Object.entries(row)) {

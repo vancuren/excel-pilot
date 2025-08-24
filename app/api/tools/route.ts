@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { generateReport, generateEmail, generateInvoice } from '@/lib/llm-tools';
+import { generateReport, generateEmail, generateInvoice, sendEmail } from '@/lib/llm-tools';
 
 export async function POST(request: NextRequest) {
   try {
@@ -22,6 +22,10 @@ export async function POST(request: NextRequest) {
         
       case 'generateInvoice':
         result = await generateInvoice(params.data, params.context);
+        break;
+        
+      case 'sendEmail':
+        result = await sendEmail(params);
         break;
         
       case 'exportData':

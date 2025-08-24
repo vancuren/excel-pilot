@@ -1,13 +1,35 @@
 'use client';
 
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { TrendingUp, TrendingDown, Calculator, Calendar } from 'lucide-react';
+import { TrendingUp, TrendingDown, Calculator, Calendar, ArrowRight } from 'lucide-react';
 import { TablePreview } from '@/types';
+import { Button } from '@/components/ui/button';
 
 interface QuickStatsProps {
   table: TablePreview;
 }
+
+const StatCard = ({ icon: Icon, title, value, trend, trendLabel }) => (
+  <Card className="border-border/50 shadow-sm hover:shadow-lg transition-all duration-300 ease-in-out transform hover:-translate-y-1 bg-background/50 backdrop-blur-sm">
+    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+      <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
+      <Icon className="h-5 w-5 text-muted-foreground" />
+    </CardHeader>
+    <CardContent>
+      <div className="text-2xl font-bold text-foreground">{value}</div>
+      {trend && (
+        <p className="text-xs text-muted-foreground flex items-center">
+          <span className={`flex items-center mr-1 ${trend > 0 ? 'text-green-500' : 'text-red-500'}`}>
+            {trend > 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
+          </span>
+          {trend > 0 ? `+${trend}%` : `${trend}%`} {trendLabel}
+        </p>
+      )}
+    </CardContent>
+  </Card>
+);
+
 
 export function QuickStats({ table }: QuickStatsProps) {
   const stats = table.stats || {};
@@ -20,69 +42,44 @@ export function QuickStats({ table }: QuickStatsProps) {
       return new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD',
-        notation: value >= 1000000 ? 'compact' : 'standard',
+        notation: 'compact',
+        maximumFractionDigits: 1,
       }).format(value);
     }
-    return value.toLocaleString();
+    return new Intl.NumberFormat('en-US', {
+      notation: 'compact',
+      maximumFractionDigits: 1,
+    }).format(value);
   };
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-4">
-      <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
-        <CardContent className="p-5">
-          <div className="flex items-center gap-2">
-            <Calculator className="h-4 w-4 text-primary" />
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Total Rows</p>
-              <p className="text-xl font-semibold text-foreground">{table.rows.length.toLocaleString()}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard 
+          icon={Calculator}
+          title="Total Rows"
+          value={table.rows.length.toLocaleString()}
+        />
+        <StatCard 
+          icon={Calendar}
+          title="Total Columns"
+          value={table.schema.length.toLocaleString()}
+        />
+        
+        {numericColumns.slice(0, 2).map((column) => {
+          const columnStats = stats[column.name];
+          if (!columnStats) return null;
 
-      <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
-        <CardContent className="p-5">
-          <div className="flex items-center gap-2">
-            <Calendar className="h-4 w-4 text-green-500" />
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Columns</p>
-              <p className="text-xl font-semibold text-foreground">{table.schema.length}</p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {numericColumns.slice(0, 4).map((column) => {
-        const columnStats = stats[column.name];
-        if (!columnStats) return null;
-
-        return (
-          <Card key={column.name} className="border-border/50 shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardContent className="p-5">
-              <div className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-purple-500" />
-                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide truncate">{column.name}</p>
-                </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Sum:</span>
-                    <span className="font-mono text-sm font-medium">
-                      {formatStatValue(columnStats.sum || 0, column.type)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center">
-                    <span className="text-muted-foreground">Avg:</span>
-                    <span className="font-mono text-sm font-medium">
-                      {formatStatValue(columnStats.avg || 0, column.type)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        );
-      })}
+          return (
+            <StatCard
+              key={column.name}
+              icon={TrendingUp}
+              title={`Total ${column.name}`}
+              value={formatStatValue(columnStats.sum || 0, column.type)}
+            />
+          );
+        })}
+      </div>
     </div>
   );
 }

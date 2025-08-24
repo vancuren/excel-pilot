@@ -38,6 +38,23 @@ export interface EmailGenerationParams {
   context: string;
 }
 
+export interface EmailSendParams {
+  to: string | string[];
+  subject: string;
+  message: string;
+  data?: any[];
+  mailgunConfig?: {
+    apiKey: string;
+    domain: string;
+    from: string;
+  };
+}
+
+export interface PurchaseProductParams {
+  productUrl: string;
+  recipientEmail?: string;
+}
+
 /**
  * Generate a comprehensive report using LLM analysis
  */
@@ -647,6 +664,77 @@ async function createEmailHTML(content: any, params: EmailGenerationParams): Pro
 }
 
 /**
+ * Send email with optional data
+ */
+export async function sendEmail(params: EmailSendParams): Promise<ToolExecutionResult> {
+  try {
+    // Prepare the email content
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="white-space: pre-wrap;">${params.message}</div>
+        ${params.data && params.data.length > 0 ? `
+          <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead>
+              <tr style="background-color: #f5f5f5;">
+                ${Object.keys(params.data[0]).map(key => 
+                  `<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">${key}</th>`
+                ).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${params.data.map(row => `
+                <tr>
+                  ${Object.values(row).map(value => 
+                    `<td style="padding: 10px; border: 1px solid #ddd;">${value ?? ''}</td>`
+                  ).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : ''}
+      </div>
+    `;
+
+    // Send via API - use absolute URL for server-side fetch
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/email/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: params.to,
+        subject: params.subject,
+        text: params.message,
+        html: emailHtml,
+        config: params.mailgunConfig
+      })
+    });
+
+    const result = await response.json();
+    
+    if (response.ok && result.success) {
+      return {
+        success: true,
+        type: 'email',
+        content: `Email sent successfully to ${Array.isArray(params.to) ? params.to.join(', ') : params.to}`
+      };
+    } else {
+      return {
+        success: false,
+        type: 'email',
+        error: result.error || 'Failed to send email'
+      };
+    }
+  } catch (error) {
+    console.error('Email sending error:', error);
+    return {
+      success: false,
+      type: 'email',
+      error: error instanceof Error ? error.message : 'Failed to send email'
+    };
+  }
+}
+
+/**
  * Generate invoice using LLM
  */
 export async function generateInvoice(data: any[], context: string): Promise<ToolExecutionResult> {
@@ -774,4 +862,99 @@ async function createInvoicePDF(invoiceData: any): Promise<ToolExecutionResult> 
       mimetype: 'application/pdf'
     }
   };
+}
+
+/**
+ * Purchase a product using Crossmint API
+ */
+export async function purchaseProduct(params: PurchaseProductParams): Promise<ToolExecutionResult> {
+  try {
+
+    console.log('Purchase Product Params', params);
+    
+    // Use static values for physical address
+    const physicalAddress = {
+      name: 'Customer',
+      line1: '123 ABC Street',
+      city: 'New York City',
+      state: 'NY',
+      postalCode: '10007',
+      country: 'US'
+    };
+
+    // Use provided email or default to russell@vancuren.net
+    const recipientEmail = params.recipientEmail || 'russell@vancuren.net';
+
+    // Prepare the Crossmint API request
+    const apiKey = process.env.CROSSMINT_API_KEY || 'sk_staging_28sy4L4GCMS4XTSnVqhgbBwdza3C32QSftqfhs5bCVsBgA6pMWMM2zawPEi9GKdgra6BcKpWL3e9PudfssxpCjqbEm4B7e91JXypwrAiWPEQhMZNZZLXiyxbdF91uzkzwtmhVpz5L7jn6fRYHrfbvb6dmS1gnLyX3M8cmHmMKv5zYCadXtsnEfCYptEPGAyrWUcHvnZqnw2TzDnM5rMx6dd';
+    const apiUrl = process.env.CROSSMINT_ENV === 'production' 
+      ? 'https://www.crossmint.com/api/2022-06-09/orders'
+      : 'https://staging.crossmint.com/api/2022-06-09/orders';
+
+    const requestBody = {
+      recipient: {
+        email: recipientEmail,
+        physicalAddress: physicalAddress
+      },
+      locale: 'en-US',
+      payment: {
+        receiptEmail: recipientEmail,
+        method: 'stripe-payment-element',
+        currency: 'usd'
+      },
+      lineItems: {
+        productLocator: `amazon:${params.productUrl}`
+      }
+    };
+
+    // Make the API request to Crossmint
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const result = await response.json();
+
+    console.log('Purchase Product Result', result);
+
+    if (response.ok && result.order) {
+      // Extract payment link from Stripe client secret if available
+      const paymentInfo = result.order.payment?.preparation?.stripeClientSecret 
+        ? `\nPayment Link: Complete payment at checkout`
+        : '';
+      
+      return {
+        success: true,
+        type: 'export',
+        content: `✅ Product order created successfully!
+Order ID: ${result.order.orderId}
+Product URL: ${params.productUrl}
+Recipient: ${recipientEmail}
+Total Price: $${result.order.quote?.totalPrice?.amount || 'N/A'}
+Status: ${result.order.payment?.status || 'awaiting-payment'}${paymentInfo}`,
+        file: {
+          data: JSON.stringify(result, null, 2),
+          filename: `order_${result.order.orderId}.json`,
+          mimetype: 'application/json'
+        }
+      };
+    } else {
+      return {
+        success: false,
+        type: 'export',
+        error: result.message || result.error || 'Failed to create product order'
+      };
+    }
+  } catch (error) {
+    console.error('Product purchase error:', error);
+    return {
+      success: false,
+      type: 'export',
+      error: error instanceof Error ? error.message : 'Failed to purchase product'
+    };
+  }
 }

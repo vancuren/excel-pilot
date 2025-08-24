@@ -6,52 +6,53 @@
 
 @layer base {
   :root {
+    /* Balanced neutrals + accessible primary */
     --background: 0 0% 100%;
-    --foreground: 0 0% 9%;
+    --foreground: 0 0% 10%;
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
+    --card-foreground: 0 0% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
-    --primary: 220 100% 50%;
+    --popover-foreground: 0 0% 10%;
+    --primary: 0 0% 9%; /* near-black for flat accent */
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 13% 95%;
-    --secondary-foreground: 220 9% 46%;
-    --muted: 220 13% 95%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 220 13% 95%;
-    --accent-foreground: 220 9% 15%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary: 220 16% 96%;
+    --secondary-foreground: 220 10% 42%;
+    --muted: 220 16% 96%;
+    --muted-foreground: 220 8% 42%;
+    --accent: 220 16% 96%;
+    --accent-foreground: 220 9% 18%;
+    --destructive: 0 72% 54%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 220 100% 50%;
+    --border: 220 13% 90%;
+    --input: 220 13% 90%;
+    --ring: 0 0% 9%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
     --chart-4: 280 65% 60%;
     --chart-5: 340 75% 55%;
-    --radius: 0.5rem;
+    --radius: 0.75rem;
   }
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 213 31% 91%;
-    --card: 224 71% 4%;
-    --card-foreground: 213 31% 91%;
-    --popover: 224 71% 4%;
-    --popover-foreground: 213 31% 91%;
-    --primary: 220 100% 50%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 215 28% 17%;
-    --secondary-foreground: 213 31% 91%;
-    --muted: 215 28% 17%;
-    --muted-foreground: 217 11% 65%;
-    --accent: 215 28% 17%;
-    --accent-foreground: 213 31% 91%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 213 31% 91%;
-    --border: 215 28% 17%;
-    --input: 215 28% 17%;
-    --ring: 220 100% 50%;
+    --background: 224 40% 6%;
+    --foreground: 213 31% 92%;
+    --card: 224 40% 6%;
+    --card-foreground: 213 31% 92%;
+    --popover: 224 40% 6%;
+    --popover-foreground: 213 31% 92%;
+    --primary: 0 0% 98%; /* near-white in dark */
+    --primary-foreground: 0 0% 10%;
+    --secondary: 215 20% 14%;
+    --secondary-foreground: 213 31% 88%;
+    --muted: 215 20% 14%;
+    --muted-foreground: 217 12% 64%;
+    --accent: 215 20% 14%;
+    --accent-foreground: 213 31% 92%;
+    --destructive: 0 63% 38%;
+    --destructive-foreground: 213 31% 92%;
+    --border: 215 20% 18%;
+    --input: 215 20% 18%;
+    --ring: 0 0% 98%;
     --chart-1: 220 70% 50%;
     --chart-2: 160 60% 45%;
     --chart-3: 30 80% 55%;
@@ -67,17 +68,54 @@
   body {
     @apply bg-background text-foreground font-sans antialiased;
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+    transition: background-color 200ms ease, color 200ms ease;
   }
 }
 
 /* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: hsl(var(--border) / 0.9); }
+
+/* Focus ring polish */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.25);
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+
+/* Subtle backdrop gloss utilities */
+.glass {
+  background-color: hsl(var(--background) / 0.7);
+  backdrop-filter: blur(10px);
 }
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--border));
-  border-radius: 3px;
+
+/* Decorative grid and radial helpers */
+.bg-grid {
+  background-image: linear-gradient(hsl(var(--border) / 0.4) 1px, transparent 1px),
+    linear-gradient(90deg, hsl(var(--border) / 0.4) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+.bg-radial-soft {
+  background-image: radial-gradient(600px 300px at 0% -10%, hsl(var(--primary) / 0.12), transparent),
+    radial-gradient(600px 300px at 100% 110%, hsl(var(--primary) / 0.12), transparent);
+}
+
+/* Markdown rendering inside chat */
+.markdown-body :where(h1,h2,h3,h4){@apply mt-3 mb-2 font-semibold text-foreground}
+.markdown-body :where(p){@apply my-2 text-[13.5px] leading-6}
+.markdown-body :where(ul){@apply my-2 list-disc pl-5}
+.markdown-body :where(ol){@apply my-2 list-decimal pl-5}
+.markdown-body :where(a){@apply text-primary underline underline-offset-2 hover:opacity-80}
+.markdown-body :where(code){@apply px-1.5 py-0.5 rounded bg-muted/70 text-foreground text-[12.5px]}
+.markdown-body :where(pre){@apply my-3 rounded-lg bg-muted/70 border border-border/50 p-3 overflow-x-auto}
+.markdown-body :where(blockquote){@apply my-3 pl-3 border-l-2 border-border/60 text-muted-foreground}
+
+
+.markdown-body > * {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #000;
+  white-space: normal;
+  margin-bottom: 0 !important;
 }

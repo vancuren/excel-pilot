@@ -215,7 +215,7 @@ export function ToolActions({ message, data = [], onToolExecuted }: ToolActionsP
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 px-3 bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 dark:bg-blue-950/20 dark:hover:bg-blue-950/40 dark:border-blue-800 dark:text-blue-300"
+          className="h-8 px-3 rounded-lg bg-muted/50 hover:bg-muted/70 border border-border/60 text-foreground"
           onClick={() => setShowReportDialog(true)}
           disabled={isGenerating || data.length === 0}
         >
@@ -226,7 +226,7 @@ export function ToolActions({ message, data = [], onToolExecuted }: ToolActionsP
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 px-3 bg-purple-50 hover:bg-purple-100 border border-purple-200 text-purple-700 dark:bg-purple-950/20 dark:hover:bg-purple-950/40 dark:border-purple-800 dark:text-purple-300"
+          className="h-8 px-3 rounded-lg bg-muted/50 hover:bg-muted/70 border border-border/60 text-foreground"
           onClick={() => setShowEmailDialog(true)}
           disabled={isGenerating || data.length === 0}
         >
@@ -237,7 +237,7 @@ export function ToolActions({ message, data = [], onToolExecuted }: ToolActionsP
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 px-3 bg-green-50 hover:bg-green-100 border border-green-200 text-green-700 dark:bg-green-950/20 dark:hover:bg-green-950/40 dark:border-green-800 dark:text-green-300"
+          className="h-8 px-3 rounded-lg bg-muted/50 hover:bg-muted/70 border border-border/60 text-foreground"
           onClick={handleGenerateInvoice}
           disabled={isGenerating || data.length === 0}
         >
@@ -252,7 +252,7 @@ export function ToolActions({ message, data = [], onToolExecuted }: ToolActionsP
         <Button
           variant="ghost"
           size="sm"
-          className="h-8 px-3 bg-orange-50 hover:bg-orange-100 border border-orange-200 text-orange-700 dark:bg-orange-950/20 dark:hover:bg-orange-950/40 dark:border-orange-800 dark:text-orange-300"
+          className="h-8 px-3 rounded-lg bg-muted/50 hover:bg-muted/70 border border-border/60 text-foreground"
           onClick={handleExportCSV}
           disabled={isGenerating || data.length === 0}
         >

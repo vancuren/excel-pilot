@@ -529,6 +529,100 @@ function generateSuggestions(question: string, results: any[]): AnalysisResult['
 }
 
 /**
+ * Analyze user intent for email actions
+ */
+export async function analyzeEmailIntent(
+  question: string,
+  queryResults: any[]
+): Promise<{
+  shouldSendEmail: boolean;
+  emailType?: 'invoice' | 'reminder' | 'statement' | 'report';
+  recipients?: Array<{ email: string; name: string; data: any }>;
+  subject?: string;
+  message?: string;
+}> {
+  const lowerQuestion = question.toLowerCase();
+  
+  // Check for email-related keywords
+  const emailKeywords = ['email', 'send', 'notify', 'remind', 'invoice'];
+  const shouldSendEmail = emailKeywords.some(keyword => lowerQuestion.includes(keyword));
+  
+  if (!shouldSendEmail) {
+    return { shouldSendEmail: false };
+  }
+  
+  // Determine email type
+  let emailType: 'invoice' | 'reminder' | 'statement' | 'report' = 'reminder';
+  if (lowerQuestion.includes('invoice')) {
+    emailType = 'invoice';
+  } else if (lowerQuestion.includes('statement')) {
+    emailType = 'statement';
+  } else if (lowerQuestion.includes('report')) {
+    emailType = 'report';
+  }
+  
+  // Extract recipients from query results
+  const recipients: Array<{ email: string; name: string; data: any }> = [];
+  
+  // Look for email columns in the data
+  if (queryResults && queryResults.length > 0) {
+    const emailColumns = Object.keys(queryResults[0]).filter(key => 
+      key.toLowerCase().includes('email') || key.toLowerCase().includes('mail')
+    );
+    const nameColumns = Object.keys(queryResults[0]).filter(key => 
+      key.toLowerCase().includes('name') || key.toLowerCase().includes('vendor') || 
+      key.toLowerCase().includes('customer') || key.toLowerCase().includes('client')
+    );
+    
+    const emailCol = emailColumns[0];
+    const nameCol = nameColumns[0];
+    
+    if (emailCol) {
+      queryResults.forEach(row => {
+        if (row[emailCol]) {
+          recipients.push({
+            email: row[emailCol],
+            name: nameCol ? row[nameCol] : 'Customer',
+            data: row
+          });
+        }
+      });
+    }
+  }
+  
+  // Generate subject and message based on type
+  let subject = '';
+  let message = '';
+  
+  switch (emailType) {
+    case 'invoice':
+      subject = 'Invoice Payment Reminder';
+      message = 'Please find your invoice details below. Payment is due soon.';
+      break;
+    case 'reminder':
+      subject = 'Payment Reminder';
+      message = 'This is a friendly reminder about your outstanding balance.';
+      break;
+    case 'statement':
+      subject = 'Account Statement';
+      message = 'Please find your account statement attached.';
+      break;
+    case 'report':
+      subject = 'Report Generated';
+      message = 'Your requested report has been generated.';
+      break;
+  }
+  
+  return {
+    shouldSendEmail: true,
+    emailType,
+    recipients,
+    subject,
+    message
+  };
+}
+
+/**
  * Check if LLM is available
  */
 export function isLLMAvailable(): boolean {
