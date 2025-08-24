@@ -83,7 +83,7 @@ export function ChatMessage({ message }: ChatMessageProps) {
           <div className="markdown-body">
 
             {isUser ? (
-              <p className={`text-sm leading-relaxed whitespace-pre-wrap m-0 text-primary-foreground`}>
+              <p className={`text-sm leading-relaxed whitespace-pre-wrap m-0 text-primary-foreground`} style={{ color: 'white' }}>
                 {message.content}
               </p>
             ) : (

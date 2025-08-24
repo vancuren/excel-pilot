@@ -24,11 +24,75 @@ export async function POST(request: NextRequest) {
       lowerMessage.includes('buy');
     
     if (isToolRequest) {
-      // Process with tool-enabled LLM
+      // Process with tool-enabled LLM, passing queryResults if available
       const llmResponse = await processWithTools(message, tableSchemas || [], queryResults);
       
       // Check if any tool calls need SQL execution first
       const hasSqlTool = llmResponse.toolCalls?.some(t => t.name === 'execute_sql');
+      
+      // If we already have query results, skip SQL execution
+      if (queryResults && queryResults.length > 0 && llmResponse.toolCalls) {
+        // We already have results, execute tools directly with the data
+        const nonSqlTools = llmResponse.toolCalls.filter(t => t.name !== 'execute_sql');
+        
+        // Update tool inputs with query results data
+        const updatedTools = nonSqlTools.map((tool: any) => {
+          if (tool.name === 'send_email') {
+            // Extract email addresses from results
+            const emailField = Object.keys(queryResults[0]).find(key => 
+              key.toLowerCase().includes('email')
+            );
+            
+            if (emailField) {
+              const emails = queryResults
+                .map((row: any) => row[emailField])
+                .filter((email: string) => email && typeof email === 'string' && email.includes('@'));
+              
+              if (emails.length > 0) {
+                tool.input.to = tool.input.to || emails;
+                tool.input.data = queryResults;
+              }
+            }
+          } else if (tool.name === 'purchase_product') {
+            // Extract product URL from results
+            const urlField = Object.keys(queryResults[0]).find(key => 
+              key.toLowerCase().includes('url') || key.toLowerCase().includes('link')
+            );
+            
+            if (urlField && queryResults[0][urlField]) {
+              tool.input.productUrl = tool.input.productUrl || queryResults[0][urlField];
+            }
+          }
+          return tool;
+        });
+        
+        const toolResults = await executeToolCalls(updatedTools);
+        
+        // Build response message
+        let responseContent = llmResponse.content || '';
+        
+        for (const result of toolResults) {
+          if (result.result.success) {
+            if (result.tool === 'send_email') {
+              responseContent += `\n\n✅ ${result.result.content || 'Email sent successfully'}`;
+            } else if (result.tool === 'purchase_product') {
+              responseContent += `\n\n${result.result.content || '✅ Product ordered successfully'}`;
+            }
+          } else {
+            responseContent += `\n\n❌ ${result.tool} failed: ${result.result.error}`;
+          }
+        }
+        
+        return NextResponse.json({
+          messages: [{
+            id: `msg_${Date.now()}`,
+            role: 'assistant',
+            content: responseContent,
+            timestamp: new Date().toISOString(),
+            toolResults: toolResults
+          }]
+        });
+      }
       
       if (hasSqlTool && llmResponse.toolCalls) {
         // Find the SQL tool call
