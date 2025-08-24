@@ -35,7 +35,7 @@ export async function getClientConnection() {
   return conn!;
 }
 
-export async function createTableFromData(tableName: string, data: any[]) {
+export async function createTableFromData(tableName: string, data: any[], dataTypes?: Record<string, string>) {
   const connection = await getClientConnection();
   
   if (data.length === 0) {
@@ -49,8 +49,94 @@ export async function createTableFromData(tableName: string, data: any[]) {
     // Ignore error if table doesn't exist
   }
 
-  // Use DuckDB's ability to parse JSON directly from a string literal
-  // We'll escape the JSON and embed it directly in the query
+  // If dataTypes are provided, create table with explicit schema
+  if (dataTypes && Object.keys(dataTypes).length > 0) {
+    try {
+      // Build CREATE TABLE statement with explicit types
+      const columns = Object.keys(data[0]);
+      const columnDefs = columns.map(col => {
+        const duckdbType = dataTypes[col] || 'VARCHAR';
+        return `"${col}" ${duckdbType}`;
+      }).join(', ');
+      
+      await connection.query(`CREATE TABLE ${tableName} (${columnDefs})`);
+      
+      // Prepare and insert data
+      for (let i = 0; i < data.length; i += 1000) {
+        const batch = data.slice(i, i + 1000);
+        const values = batch.map(row => {
+          const vals = columns.map(col => {
+            const val = row[col];
+            const colType = dataTypes[col] || 'VARCHAR';
+            
+            if (val === null || val === undefined) {
+              return 'NULL';
+            } else if (colType === 'BOOLEAN') {
+              if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE';
+              return val.toString().toLowerCase() === 'true' ? 'TRUE' : 'FALSE';
+            } else if (colType === 'DATE') {
+              // Ensure proper date format - handle various date formats
+              if (typeof val === 'string') {
+                // Check if it's already in ISO format (yyyy-mm-dd)
+                if (/^\d{4}-\d{2}-\d{2}$/.test(val)) {
+                  return `DATE '${val}'`;
+                }
+                // Check if it's in mm/dd/yyyy format
+                if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(val)) {
+                  // Parse and convert to ISO format for DuckDB
+                  const parts = val.split('/');
+                  const month = parts[0].padStart(2, '0');
+                  const day = parts[1].padStart(2, '0');
+                  const year = parts[2];
+                  return `DATE '${year}-${month}-${day}'`;
+                }
+                // Try to parse other formats
+                const parsed = new Date(val);
+                if (!isNaN(parsed.getTime())) {
+                  return `DATE '${parsed.getFullYear()}-${(parsed.getMonth() + 1).toString().padStart(2, '0')}-${parsed.getDate().toString().padStart(2, '0')}'`;
+                }
+                return `DATE '${val}'`;
+              }
+              if (val instanceof Date) return `DATE '${val.getFullYear()}-${(val.getMonth() + 1).toString().padStart(2, '0')}-${val.getDate().toString().padStart(2, '0')}'`;
+              return `DATE '${val}'`;
+            } else if (colType === 'TIMESTAMP') {
+              // Ensure proper timestamp format
+              if (typeof val === 'string') return `TIMESTAMP '${val}'`;
+              if (val instanceof Date) return `TIMESTAMP '${val.toISOString()}'`;
+              return `TIMESTAMP '${val}'`;
+            } else if (colType === 'TIME') {
+              // Ensure proper time format
+              return `TIME '${val}'`;
+            } else if (colType.startsWith('DECIMAL') || colType === 'DOUBLE' || colType === 'FLOAT') {
+              // Numeric types
+              return val;
+            } else if (colType === 'INTEGER' || colType === 'BIGINT') {
+              // Integer types
+              return Math.floor(Number(val));
+            } else if (colType === 'JSON') {
+              // JSON type
+              return `'${JSON.stringify(val).replace(/'/g, "''")}'::JSON`;
+            } else {
+              // String types (VARCHAR, UUID, etc.)
+              return `'${val.toString().replace(/'/g, "''")}'`;
+            }
+          });
+          return `(${vals.join(', ')})`;
+        }).join(', ');
+        
+        if (values) {
+          await connection.query(`INSERT INTO ${tableName} VALUES ${values}`);
+        }
+      }
+      
+      return tableName;
+    } catch (error) {
+      console.error('Failed to create table with explicit schema, falling back:', error);
+      // Fall through to auto-detection method
+    }
+  }
+
+  // Fallback: Use DuckDB's ability to parse JSON directly from a string literal
   const jsonString = JSON.stringify(data);
   const escapedJson = jsonString.replace(/'/g, "''");
   
@@ -66,22 +152,7 @@ export async function createTableFromData(tableName: string, data: any[]) {
     const firstRow = data[0];
     const columns = Object.keys(firstRow);
     
-    // Build INSERT statement with literal values
-    const values = data.map(row => {
-      const vals = columns.map(col => {
-        const val = row[col];
-        if (val === null || val === undefined) {
-          return 'NULL';
-        } else if (typeof val === 'string') {
-          return `'${val.replace(/'/g, "''")}'`;
-        } else if (typeof val === 'boolean') {
-          return val ? 'TRUE' : 'FALSE';
-        } else {
-          return val;
-        }
-      });
-      return `(${vals.join(', ')})`;
-    }).join(', ');
+    // Build INSERT statement with literal values - not used in this fallback path
     
     // Create table with first row of values to infer types
     const firstRowValues = `(${columns.map(col => {
@@ -92,7 +163,7 @@ export async function createTableFromData(tableName: string, data: any[]) {
       return val;
     }).join(', ')})`;
     
-    await connection.query(`CREATE TABLE ${tableName} AS SELECT * FROM (VALUES ${firstRowValues}) AS t(${columns.map(c => `"${c}"`).join(', ')})`);
+    await connection.query(`CREATE TABLE ${tableName} AS SELECT * FROM (VALUES ${firstRowValues}) AS t(${columns.map(c => `"${c}"`).join(', ')})`)
     
     // Insert remaining rows if any
     if (data.length > 1) {
@@ -449,7 +520,7 @@ export async function detectOverdueVendors(tableName: string) {
 
 export async function generateDatasetSummary(
   tableNames: string[],
-  datasetType: 'financial' | 'inventory' | 'sales' | 'hr' | 'general'
+  _datasetType: 'financial' | 'inventory' | 'sales' | 'hr' | 'general'
 ) {
   const tables = [];
   
