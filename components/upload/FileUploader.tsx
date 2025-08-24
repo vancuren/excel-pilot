@@ -90,7 +90,7 @@ export function FileUploader() {
             });
             
             const tableName = `${result.datasetId}_${sheet.name.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
-            await createTableFromData(tableName, sheet.data);
+            await createTableFromData(tableName, sheet.data, sheet.metadata?.dataTypes);
             tableNames.push(tableName);
             tablesCreated++;
             
