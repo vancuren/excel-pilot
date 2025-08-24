@@ -3,57 +3,41 @@
 import { useState, useEffect } from 'react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import { Search, BarChart3, Table as TableIcon, TrendingUp } from 'lucide-react';
+import { Search, BarChart3, Table as TableIcon, TrendingUp, FileWarning } from 'lucide-react';
 import { DataTable } from './DataTable';
 import { DataChart } from './DataChart';
 import { QuickStats } from './QuickStats';
-import { AuditTimeline } from './AuditTimeline';
 import { useAppStore } from '@/lib/store';
 import { api } from '@/lib/api';
 import { getTablePreview } from '@/lib/clientDatabase';
+import { Skeleton } from '@/components/ui/skeleton';
 
 export function DataViewer() {
   const [searchTerm, setSearchTerm] = useState('');
   const [activeTab, setActiveTab] = useState('table');
-  const [resultTabs, setResultTabs] = useState<string[]>([]);
   
   const { 
     currentDatasetId, 
     tables, 
     setTable, 
-    chatMessages,
+    loading,
     setLoading 
   } = useAppStore();
 
-  // Load tables when dataset changes
   useEffect(() => {
     if (currentDatasetId) {
       loadTables();
     }
   }, [currentDatasetId]);
 
-  // Track result tabs from chat messages
-  useEffect(() => {
-    const newResultTabs = chatMessages
-      .filter(msg => msg.role === 'assistant' && msg.artifacts?.length)
-      .map(msg => `result_${msg.id}`);
-    setResultTabs(newResultTabs);
-  }, [chatMessages]);
-
   const loadTables = async () => {
     if (!currentDatasetId) return;
-    
     setLoading(true);
     try {
-      // Try to load tables from localStorage first (stored during upload)
       const storedTables = localStorage.getItem(`dataset_${currentDatasetId}_tables`);
-      
       if (storedTables) {
         const tableInfo = JSON.parse(storedTables);
-        
-        // Load each table from client-side DuckDB
         for (const info of tableInfo) {
           try {
             const tablePreview = await getTablePreview(info.name);
@@ -63,7 +47,6 @@ export function DataViewer() {
           }
         }
       } else {
-        // Fallback to API (which might return mock data)
         const { tables: tableList } = await api.getTables(currentDatasetId);
         tableList.forEach(table => {
           setTable(table.name, table);
@@ -78,14 +61,18 @@ export function DataViewer() {
   const tableNames = Object.keys(tables);
   const currentTable = tableNames[0] ? tables[tableNames[0]] : null;
 
-  if (!currentDatasetId) {
+  if (loading) {
+    return <DataViewerSkeleton />;
+  }
+
+  if (!currentDatasetId || !currentTable) {
     return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <TableIcon className="h-16 w-16 text-muted-foreground mx-auto" />
+      <div className="h-full flex items-center justify-center bg-background/50 rounded-lg border-2 border-dashed border-border/60">
+        <div className="text-center space-y-4 p-8">
+          <FileWarning className="h-16 w-16 text-muted-foreground mx-auto" />
           <div>
-            <h3 className="text-lg font-medium">No data loaded</h3>
-            <p className="text-muted-foreground">Upload a CSV or XLSX file to begin analysis</p>
+            <h3 className="text-xl font-semibold">No Data Loaded</h3>
+            <p className="text-muted-foreground mt-2 max-w-sm mx-auto">Upload a CSV or XLSX file to begin your analysis. Your data will appear here.</p>
           </div>
         </div>
       </div>
@@ -94,39 +81,27 @@ export function DataViewer() {
 
   return (
     <div className="h-full flex flex-col space-y-4">
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between mb-6">
-        <div className="flex items-center gap-2 flex-wrap">
-          {tableNames.map((tableName) => (
-            <Badge key={tableName} variant="secondary" className="cursor-pointer bg-muted/60 hover:bg-muted/80 transition-colors">
-              {tableName}
-              <span className="ml-1 text-xs opacity-60">
-                ({tables[tableName].rows.length})
-              </span>
-            </Badge>
-          ))}
+      <header className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+        <div className="flex-1">
+          <h1 className="text-2xl font-bold text-foreground">{tableNames[0] || 'Data Analysis'}</h1>
+          <p className="text-muted-foreground">Explore and analyze your dataset</p>
         </div>
-        
-        <div className="relative w-full sm:w-64">
+        <div className="relative w-full sm:w-72">
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search data..."
+            placeholder="Search table data..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 bg-muted/30 border-border/60 focus:bg-background transition-colors"
+            className="pl-9 bg-background/60 border-border/60 focus:bg-background transition-colors"
           />
         </div>
-      </div>
+      </header>
 
-      {/* Quick Stats */}
-      {currentTable && (
-        <QuickStats table={currentTable} />
-      )}
+      <QuickStats table={currentTable} />
 
-      {/* Main Content */}
       <div className="flex-1 min-h-0">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-          <TabsList className="grid w-full grid-cols-3 bg-muted/50 p-1 rounded-lg mb-4">
+          <TabsList className="bg-muted/50 p-1 rounded-lg self-start">
             <TabsTrigger value="table" className="flex items-center gap-2">
               <TableIcon className="h-4 w-4" />
               Table
@@ -135,66 +110,41 @@ export function DataViewer() {
               <BarChart3 className="h-4 w-4" />
               Charts
             </TabsTrigger>
-            <TabsTrigger value="results" className="flex items-center gap-2">
-              <TrendingUp className="h-4 w-4" />
-              Results
-              {resultTabs.length > 0 && (
-                <Badge variant="secondary" className="ml-1 text-xs bg-primary/10 text-primary">
-                  {resultTabs.length}
-                </Badge>
-              )}
-            </TabsTrigger>
           </TabsList>
 
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 mt-4">
             <TabsContent value="table" className="h-full mt-0">
-              {currentTable ? (
-                <DataTable table={currentTable} searchTerm={searchTerm} />
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-muted-foreground">No table data available</p>
-                </div>
-              )}
+              <DataTable table={currentTable} searchTerm={searchTerm} />
             </TabsContent>
 
             <TabsContent value="chart" className="h-full mt-0">
-              {currentTable ? (
-                <DataChart table={currentTable} />
-              ) : (
-                <div className="h-full flex items-center justify-center">
-                  <p className="text-muted-foreground">No chart data available</p>
-                </div>
-              )}
+              <DataChart table={currentTable} />
             </TabsContent>
-
-            <TabsContent value="results" className="h-full mt-0">
-              <div className="h-full space-y-4">
-                {resultTabs.length === 0 ? (
-                  <div className="h-full flex items-center justify-center">
-                    <div className="text-center space-y-2">
-                      <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto" />
-                      <p className="text-muted-foreground">No analysis results yet</p>
-                      <p className="text-sm text-muted-foreground">Ask questions in the chat to generate insights</p>
-                    </div>
-                  </div>
-                ) : (
-                  <Card className="h-full border-border/50 shadow-sm">
-                    <CardHeader>
-                      <CardTitle className="text-lg font-semibold">Analysis Results</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-muted-foreground">Recent analysis results will appear here</p>
-                    </CardContent>
-                  </Card>
-                )}
-              </div>
-            </TabsContent>
+            
           </div>
         </Tabs>
       </div>
-
-      {/* Audit Timeline */}
-      <AuditTimeline />
     </div>
   );
 }
+
+const DataViewerSkeleton = () => (
+  <div className="space-y-4">
+    <div className="flex justify-between items-center">
+      <Skeleton className="h-10 w-1/3" />
+      <Skeleton className="h-10 w-1/4" />
+    </div>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <Skeleton className="h-24" />
+      <Skeleton className="h-24" />
+      <Skeleton className="h-24" />
+      <Skeleton className="h-24" />
+    </div>
+    <Skeleton className="h-10 w-1/4 mb-4" />
+    <Card className="h-[400px]">
+      <CardContent className="p-6">
+        <Skeleton className="h-full" />
+      </CardContent>
+    </Card>
+  </div>
+);

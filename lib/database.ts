@@ -48,7 +48,7 @@ export async function createTableFromData(tableName: string, data: any[]) {
   }
 
   // Insert data directly - DuckDB will infer schema
-  const insertQuery = `CREATE TABLE ${tableName} AS SELECT * FROM read_json('${JSON.stringify(data).replace(/'/g, "''")}')`;
+  const insertQuery = `CREATE TABLE ${tableName} AS SELECT * FROM read_json('${JSON.stringify(data).replace(/'/g, "''")}', sample_size=-1)`;
   await connection.query(insertQuery);
 
   return tableName;
