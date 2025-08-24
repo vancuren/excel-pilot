@@ -18,7 +18,10 @@ export async function POST(request: NextRequest) {
       lowerMessage.includes('notify') || 
       lowerMessage.includes('remind') ||
       lowerMessage.includes('invoice') ||
-      lowerMessage.includes('report');
+      lowerMessage.includes('report') ||
+      lowerMessage.includes('purchase') ||
+      lowerMessage.includes('order') ||
+      lowerMessage.includes('buy');
     
     if (isToolRequest) {
       // Process with tool-enabled LLM
@@ -48,7 +51,7 @@ export async function POST(request: NextRequest) {
       }
       
       // Execute non-SQL tools immediately
-      let toolResults = [];
+      let toolResults: any[] = [];
       if (llmResponse.shouldExecuteTools && llmResponse.toolCalls) {
         const nonSqlTools = llmResponse.toolCalls.filter(t => t.name !== 'execute_sql');
         if (nonSqlTools.length > 0) {
@@ -66,6 +69,8 @@ export async function POST(request: NextRequest) {
             responseContent += `\n\n✅ ${result.result.content || 'Email sent successfully'}`;
           } else if (result.tool === 'generate_report') {
             responseContent += '\n\n✅ Report generated successfully';
+          } else if (result.tool === 'purchase_product') {
+            responseContent += `\n\n${result.result.content || '✅ Product ordered successfully'}`;
           }
         } else {
           responseContent += `\n\n❌ ${result.tool} failed: ${result.result.error}`;

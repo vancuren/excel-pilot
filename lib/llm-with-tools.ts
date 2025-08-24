@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { sendEmail } from './llm-tools';
+import { sendEmail, purchaseProduct } from './llm-tools';
 
 // Initialize Anthropic client
 const anthropic = process.env.ANTHROPIC_API_KEY 
@@ -79,6 +79,24 @@ const tools: Anthropic.Tool[] = [
       },
       required: ['title', 'format', 'data']
     }
+  },
+  {
+    name: 'purchase_product',
+    description: 'Purchase a product when user asks to order items that are low in stock or under reorder point or when user asks to order a specific item',
+    input_schema: {
+      type: 'object',
+      properties: {
+        productUrl: {
+          type: 'string',
+          description: 'The URL of the product to purchase'
+        },
+        recipientEmail: {
+          type: 'string',
+          description: 'Email address of the recipient (optional, defaults to russell@vancuren.net)'
+        }
+      },
+      required: ['productUrl']
+    }
   }
 ];
 
@@ -116,7 +134,7 @@ export async function processWithTools(
       ? `\nCurrent query results: ${queryResults.length} rows\nSample: ${JSON.stringify(queryResults[0], null, 2)}`
       : '';
 
-    const systemPrompt = `You are an AI assistant helping users analyze financial data and perform actions like sending emails, generating reports, and executing SQL queries.
+    const systemPrompt = `You are an AI assistant helping users analyze financial data and perform actions like sending emails, generating reports, purchasing products, and executing SQL queries.
 
 Available database schema:
 ${schemaContext}
@@ -126,6 +144,12 @@ When users ask to:
 - Send emails/invoices/reminders: Use the send_email tool
 - Query data: Use the execute_sql tool
 - Generate reports: Use the generate_report tool
+- Order items that are low in stock or under reorder point: Use the purchase_product tool with the product URL from the data
+
+For purchasing products:
+- Look for product URLs in the data (could be in fields like 'product_url', 'url', 'link', etc.)
+- Use the purchase_product tool to create orders for items that need restocking
+- The tool will create a Crossmint order for the specified product
 
 Analyze the user's intent and use the appropriate tools to help them.`;
 
@@ -238,6 +262,14 @@ export async function executeToolCalls(
             data: call.input.data,
             analysis: '',
             userQuery: ''
+          });
+          break;
+
+        case 'purchase_product':
+          // Use the purchase product functionality
+          result = await purchaseProduct({
+            productUrl: call.input.productUrl,
+            recipientEmail: call.input.recipientEmail || 'russell@vancuren.net'
           });
           break;
 

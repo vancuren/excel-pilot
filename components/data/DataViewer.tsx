@@ -21,7 +21,7 @@ export function DataViewer() {
     currentDatasetId, 
     tables, 
     setTable, 
-    loading,
+    isLoading,
     setLoading 
   } = useAppStore();
 
@@ -61,7 +61,7 @@ export function DataViewer() {
   const tableNames = Object.keys(tables);
   const currentTable = tableNames[0] ? tables[tableNames[0]] : null;
 
-  if (loading) {
+  if (isLoading) {
     return <DataViewerSkeleton />;
   }
 

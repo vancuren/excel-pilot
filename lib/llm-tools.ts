@@ -50,6 +50,11 @@ export interface EmailSendParams {
   };
 }
 
+export interface PurchaseProductParams {
+  productUrl: string;
+  recipientEmail?: string;
+}
+
 /**
  * Generate a comprehensive report using LLM analysis
  */
@@ -857,4 +862,99 @@ async function createInvoicePDF(invoiceData: any): Promise<ToolExecutionResult> 
       mimetype: 'application/pdf'
     }
   };
+}
+
+/**
+ * Purchase a product using Crossmint API
+ */
+export async function purchaseProduct(params: PurchaseProductParams): Promise<ToolExecutionResult> {
+  try {
+
+    console.log('Purchase Product Params', params);
+    
+    // Use static values for physical address
+    const physicalAddress = {
+      name: 'Customer',
+      line1: '123 ABC Street',
+      city: 'New York City',
+      state: 'NY',
+      postalCode: '10007',
+      country: 'US'
+    };
+
+    // Use provided email or default to russell@vancuren.net
+    const recipientEmail = params.recipientEmail || 'russell@vancuren.net';
+
+    // Prepare the Crossmint API request
+    const apiKey = process.env.CROSSMINT_API_KEY || 'sk_staging_28sy4L4GCMS4XTSnVqhgbBwdza3C32QSftqfhs5bCVsBgA6pMWMM2zawPEi9GKdgra6BcKpWL3e9PudfssxpCjqbEm4B7e91JXypwrAiWPEQhMZNZZLXiyxbdF91uzkzwtmhVpz5L7jn6fRYHrfbvb6dmS1gnLyX3M8cmHmMKv5zYCadXtsnEfCYptEPGAyrWUcHvnZqnw2TzDnM5rMx6dd';
+    const apiUrl = process.env.CROSSMINT_ENV === 'production' 
+      ? 'https://www.crossmint.com/api/2022-06-09/orders'
+      : 'https://staging.crossmint.com/api/2022-06-09/orders';
+
+    const requestBody = {
+      recipient: {
+        email: recipientEmail,
+        physicalAddress: physicalAddress
+      },
+      locale: 'en-US',
+      payment: {
+        receiptEmail: recipientEmail,
+        method: 'stripe-payment-element',
+        currency: 'usd'
+      },
+      lineItems: {
+        productLocator: `amazon:${params.productUrl}`
+      }
+    };
+
+    // Make the API request to Crossmint
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'X-API-KEY': apiKey,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    const result = await response.json();
+
+    console.log('Purchase Product Result', result);
+
+    if (response.ok && result.order) {
+      // Extract payment link from Stripe client secret if available
+      const paymentInfo = result.order.payment?.preparation?.stripeClientSecret 
+        ? `\nPayment Link: Complete payment at checkout`
+        : '';
+      
+      return {
+        success: true,
+        type: 'export',
+        content: `✅ Product order created successfully!
+Order ID: ${result.order.orderId}
+Product URL: ${params.productUrl}
+Recipient: ${recipientEmail}
+Total Price: $${result.order.quote?.totalPrice?.amount || 'N/A'}
+Status: ${result.order.payment?.status || 'awaiting-payment'}${paymentInfo}`,
+        file: {
+          data: JSON.stringify(result, null, 2),
+          filename: `order_${result.order.orderId}.json`,
+          mimetype: 'application/json'
+        }
+      };
+    } else {
+      return {
+        success: false,
+        type: 'export',
+        error: result.message || result.error || 'Failed to create product order'
+      };
+    }
+  } catch (error) {
+    console.error('Product purchase error:', error);
+    return {
+      success: false,
+      type: 'export',
+      error: error instanceof Error ? error.message : 'Failed to purchase product'
+    };
+  }
 }
