@@ -841,7 +841,7 @@ Consider:
 - General: if it doesn't clearly fit the above categories`;
 
       const response = await anthropic.messages.create({
-        model: 'claude-sonnet-4-20250514',
+        model: 'claude-3-5-haiku-20241022',
         max_tokens: 10,
         temperature: 0,
         messages: [

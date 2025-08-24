@@ -32,6 +32,28 @@ export async function POST(request: NextRequest) {
       metadata: sheet.metadata // Include metadata about the sheet
     }));
 
+    // Persist sheets server-side for agent access (file-backed store)
+    try {
+      const { promises: fs } = await import('fs');
+      const path = await import('path');
+      const datasetDir = path.join(process.cwd(), 'data', datasetId);
+      await fs.mkdir(datasetDir, { recursive: true });
+      for (const sheet of sheets) {
+        const normalized = sheet.name.toLowerCase().replace(/[^a-z0-9_]/gi, '_');
+        const tableFile = path.join(datasetDir, `${normalized}.json`);
+        await fs.writeFile(tableFile, JSON.stringify(sheet.data, null, 2), 'utf8');
+        // Heuristic aliases for agent tables
+        if (/customer/.test(normalized)) {
+          await fs.writeFile(path.join(datasetDir, `customers.json`), JSON.stringify(sheet.data, null, 2), 'utf8');
+        }
+        if (/(billable|item|line|hour|charge|invoice_item)/.test(normalized)) {
+          await fs.writeFile(path.join(datasetDir, `billable_items.json`), JSON.stringify(sheet.data, null, 2), 'utf8');
+        }
+      }
+    } catch (e) {
+      console.warn('Server persistence failed:', e);
+    }
+
     // Create a basic summary without database
     const summary = {
       tables: sheets.map(sheet => ({

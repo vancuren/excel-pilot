@@ -82,7 +82,7 @@ SQL Requirements:
 - Do NOT include semicolons at the end of the query`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 1000,
       temperature: 0,
       system: 'You are a SQL expert. Always respond with valid JSON.',
@@ -198,7 +198,7 @@ Provide:
 Format your response in markdown with clear headings.`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 1500,
       temperature: 0.3,
       messages: [
@@ -260,7 +260,7 @@ Provide:
 Keep your response concise and focused on actionable insights.`;
 
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 800,
       temperature: 0.3,
       messages: [

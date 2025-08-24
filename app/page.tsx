@@ -4,6 +4,7 @@ import { AppHeader } from "@/components/layout/AppHeader"
 import { SplitLayout } from "@/components/layout/SplitLayout"
 import { useAppStore } from "@/lib/store"
 import { Sparkles, Shield, Zap } from "lucide-react"
+import { EnhancedSplitLayout } from "@/components/layout/EnhancedSplitLayout"
 
 export default function Home() {
   const { currentDatasetId, datasets } = useAppStore()
@@ -57,6 +58,8 @@ export default function Home() {
     <div className="min-h-screen bg-background">
       <AppHeader />
       <SplitLayout />
+      {/* {currentDatasetId && <EnhancedSplitLayout datasetId={currentDatasetId} />} */}
+      {/* {!currentDatasetId && <SplitLayout />} */}
     </div>
   )
 }

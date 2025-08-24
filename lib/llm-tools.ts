@@ -118,7 +118,7 @@ Format your response as JSON with this structure:
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 2000,
       temperature: 0.3,
       system: 'You are a financial analyst creating professional reports. Always respond with valid JSON.',
@@ -531,7 +531,7 @@ For statements: Include account summary and period covered`;
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 1000,
       temperature: 0.3,
       system: 'You are a professional business communication expert. Always respond with valid JSON.',
@@ -683,7 +683,7 @@ Return JSON with invoice details including:
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-3-5-haiku-20241022',
       max_tokens: 1500,
       temperature: 0,
       messages: [

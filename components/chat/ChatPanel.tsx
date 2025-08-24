@@ -1,30 +1,42 @@
 'use client';
 
-import { useState } from 'react';
-import { Send, Sparkles, FileDown, Receipt, Mail, CheckSquare, Bot, Zap } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useState, useRef, useEffect } from 'react';
+import { Send, Bot, Zap, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from '@/components/ui/separator';
 import { ChatMessage } from './ChatMessage';
-import { ActionButton } from './ActionButton';
 import { useAppStore } from '@/lib/store';
-import { api } from '@/lib/api';
 import { getTablePreview, executeQuery } from '@/lib/clientDatabase';
+import type { ActionSuggestion } from '@/types';
 
 export function ChatPanel() {
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [streamingContent, setStreamingContent] = useState('');
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   const { 
     currentDatasetId, 
     chatMessages, 
     addMessage, 
-    addAuditEvent,
-    setLoading 
+    updateMessage
   } = useAppStore();
+
+  // Check if message should use OpenAI agents
+  const shouldUseAgents = (message: string) => {
+    const agentKeywords = [
+      'invoice', 'payment', 'reconcile', 'remind',
+      'generate report', 'bulk', 'follow up',
+      'track', 'overdue', 'accounting',
+      'financial planning', 'forecast', 'budget'
+    ];
+    
+    const lowerMessage = message.toLowerCase();
+    return agentKeywords.some(keyword => lowerMessage.includes(keyword));
+  };
 
   const handleSendMessage = async () => {
     if (!inputMessage.trim() || !currentDatasetId) return;
@@ -37,6 +49,7 @@ export function ChatPanel() {
     };
 
     addMessage(userMessage);
+    const messageToSend = inputMessage;
     setInputMessage('');
     setIsTyping(true);
 
@@ -66,122 +79,22 @@ export function ChatPanel() {
           }
         }
       }
-      
-      // First, get SQL query from LLM
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          datasetId: currentDatasetId,
-          message: inputMessage,
-          tableSchemas
-        }, (_key, value) => {
-          // Convert BigInt to number for JSON serialization
-          if (typeof value === 'bigint') {
-            return Number(value);
-          }
-          return value;
-        }),
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Chat API failed: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      
-      // Check if we need to execute SQL on client side
-      if (data.shouldExecuteClient && data.sql) {
-        try {
-          // Execute SQL query on client side
-          const queryResult = await executeQuery(data.sql);
-          const queryResults = queryResult.toArray().map(row => {
-            // Convert BigInt values to numbers
-            const cleanRow: any = {};
-            for (const [key, value] of Object.entries(row)) {
-              cleanRow[key] = typeof value === 'bigint' ? Number(value) : value;
-            }
-            return cleanRow;
-          });
-          
-          // Send results back to API for analysis
-          const analysisResponse = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              datasetId: currentDatasetId,
-              message: inputMessage,
-              tableSchemas,
-              queryResults
-            }, (_key, value) => {
-              if (typeof value === 'bigint') {
-                return Number(value);
-              }
-              return value;
-            }),
-          });
-          
-          if (analysisResponse.ok) {
-            const analysisData = await analysisResponse.json();
-            if (analysisData.messages) {
-              analysisData.messages.forEach((msg: any) => {
-                addMessage({
-                  ...msg,
-                  queryData: queryResults, // Add query results to message
-                  metadata: {
-                    ...msg.metadata,
-                    query: data.sql,
-                    explanation: data.explanation
-                  }
-                });
-              });
-            }
-          }
-        } catch (queryError: any) {
-          // Query execution failed - provide helpful error message
-          console.error('Query execution error:', queryError);
-          
-          let errorDetails = queryError.message || 'Unknown error';
-          let suggestion = '';
-          
-          // Parse common DuckDB errors and provide suggestions
-          if (errorDetails.includes('not found') || errorDetails.includes('does not exist')) {
-            suggestion = '\n\nThis might be a column name issue. The available columns are:\n' + 
-              tableSchemas.map(s => `Table ${s.tableName}: ${s.columns.map((c: any) => c.name).join(', ')}`).join('\n');
-          } else if (errorDetails.includes('syntax error')) {
-            suggestion = '\n\nThere might be a syntax issue with the generated SQL. Please try rephrasing your question more specifically.';
-          } else if (errorDetails.includes('type mismatch') || errorDetails.includes('cannot cast')) {
-            suggestion = '\n\nThis appears to be a data type issue. Try being more specific about the columns or values you want to query.';
-          }
-          
-          const errorMessage = {
-            id: `msg_${Date.now()}`,
-            role: 'assistant' as const,
-            content: `I understood your question and generated this SQL query:\n\n\`\`\`sql\n${data.sql}\n\`\`\`\n\n❌ Query execution failed: ${errorDetails}${suggestion}\n\nWould you like to try rephrasing your question?`,
-            timestamp: new Date().toISOString(),
-            suggestions: data.suggestions || ['Show me all data', 'Show summary statistics', 'Show top 10 records']
-          };
-          addMessage(errorMessage);
-        }
-      } else if (data.messages) {
-        // Direct response without SQL execution
-        data.messages.forEach((msg: any) => {
-          addMessage(msg);
-        });
+
+      // Check if we should use OpenAI agents with streaming
+      if (shouldUseAgents(messageToSend)) {
+        await handleAgentStreaming(messageToSend, tableSchemas);
+      } else {
+        // Regular SQL processing
+        await handleRegularChat(messageToSend, tableSchemas);
       }
       
     } catch (error) {
       console.error('Chat error:', error);
       
-      // Fallback to client-side analysis if API fails
       const errorMessage = {
         id: `msg_${Date.now()}_error`,
         role: 'assistant' as const,
-        content: 'I encountered an error while processing your request. Please make sure your data is properly loaded and try again. If you haven\'t set up an API key yet, I\'ll use basic pattern matching to help analyze your data.',
+        content: 'I encountered an error while processing your request. Please make sure your data is properly loaded and try again.',
         timestamp: new Date().toISOString(),
       };
       
@@ -189,41 +102,346 @@ export function ChatPanel() {
     }
 
     setIsTyping(false);
+    setIsStreaming(false);
+    setStreamingContent('');
   };
 
-  const handleActionClick = async (actionId: string) => {
-    setLoading(true);
+  const handleAgentStreaming = async (message: string, tableSchemas: any[]) => {
+    setIsStreaming(true);
+    
+    // Create a message that will be updated as streaming happens
+    const assistantMessageId = `msg_${Date.now()}_assistant`;
+    const assistantMessage = {
+      id: assistantMessageId,
+      role: 'assistant' as const,
+      content: '',
+      timestamp: new Date().toISOString(),
+      metadata: {
+        agentUsed: true,
+        streaming: true
+      }
+    };
+    
+    addMessage(assistantMessage);
+
+    // Abort any previous streaming
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    
+    abortControllerRef.current = new AbortController();
+
     try {
-      const result = await api.executeAction(actionId);
-      addAuditEvent(result.audit);
-      
-      // Add confirmation message
-      addMessage({
-        id: `msg_${Date.now()}_action`,
-        role: 'assistant',
-        content: `✅ ${result.audit.summary}`,
-        artifacts: result.artifacts,
-        timestamp: new Date().toISOString(),
+      // Use OpenAI Agents streaming for real-time progress and execution
+      let response = await fetch('/api/openai-agents', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+          datasetId: currentDatasetId,
+          tableSchemas,
+          streaming: true
+        }),
+        signal: abortControllerRef.current.signal
       });
-    } catch (error) {
-      console.error('Action error:', error);
+
+      if (!response.ok) {
+        throw new Error(`Agent API failed: ${response.statusText}`);
+      }
+
+      // Handle streaming response
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) {
+        throw new Error('No response body');
+      }
+
+      let accumulatedContent = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            
+            if (data === '[DONE]') {
+              // Streaming complete; now execute concrete actions via local agents
+              setIsStreaming(false);
+              try {
+                const execRes = await fetch('/api/agents', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    naturalLanguage: message,
+                    datasetId: currentDatasetId,
+                    userId: 'user_default',
+                    organizationId: 'org_default'
+                  })
+                });
+                if (execRes.ok) {
+                  const execData = await execRes.json();
+                  const summary = execData.summary || 'Request processed successfully.';
+                  const details = execData.tasks?.length ? `\n\nCompleted ${execData.tasks.length} task(s).` : '';
+                  accumulatedContent += `${accumulatedContent ? '\n\n' : ''}${summary}${details}`;
+                } else {
+                  // If local execution fails, append a helpful note
+                  accumulatedContent += `${accumulatedContent ? '\n\n' : ''}Could not execute actions automatically.`;
+                }
+              } catch (e) {
+                accumulatedContent += `${accumulatedContent ? '\n\n' : ''}Execution error: ${(e as Error).message}`;
+              }
+              // Final update with any tool results or suggestions
+              updateMessage(assistantMessageId, {
+                content: accumulatedContent,
+                toolSuggestions: generateAgentSuggestions(accumulatedContent)
+              });
+              break;
+            }
+            
+            try {
+              // Try to parse as JSON first (for structured responses)
+              const parsed = JSON.parse(data);
+              if (typeof parsed === 'string') {
+                accumulatedContent += parsed;
+              } else if (parsed.content) {
+                accumulatedContent += parsed.content;
+              } else if (parsed.text) {
+                accumulatedContent += parsed.text;
+              } else if (parsed.delta) {
+                accumulatedContent += parsed.delta;
+              }
+            } catch {
+              // If not JSON, treat as plain text
+              accumulatedContent += data;
+            }
+            
+            // Update message with accumulated content
+            updateMessage(assistantMessageId, {
+              content: accumulatedContent
+            });
+          }
+        }
+      }
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        console.log('Streaming aborted');
+      } else {
+        console.error('Streaming error:', error);
+        updateMessage(assistantMessageId, {
+          content: `Error during agent execution: ${error.message}. Please try again.`
+        });
+      }
+    } finally {
+      setIsStreaming(false);
+      abortControllerRef.current = null;
     }
-    setLoading(false);
   };
 
-  const getActionIcon = (category: string) => {
-    switch (category) {
-      case 'invoice': return <Receipt className="h-4 w-4" />;
-      case 'export': return <FileDown className="h-4 w-4" />;
-      case 'approval': return <CheckSquare className="h-4 w-4" />;
-      case 'voucher': return <FileDown className="h-4 w-4" />;
-      default: return <Sparkles className="h-4 w-4" />;
+  const handleRegularChat = async (message: string, tableSchemas: any[]) => {
+    // First, get SQL query from LLM
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        datasetId: currentDatasetId,
+        message,
+        tableSchemas,
+        useAgents: false // Explicitly disable agents for SQL queries
+      }, (_key, value) => {
+        // Convert BigInt to number for JSON serialization
+        if (typeof value === 'bigint') {
+          return Number(value);
+        }
+        return value;
+      }),
+    });
+    
+    if (!response.ok) {
+      throw new Error(`Chat API failed: ${response.statusText}`);
+    }
+    
+    const data = await response.json();
+    
+    // Check if we need to execute SQL on client side
+    if (data.shouldExecuteClient && data.sql) {
+      try {
+        // Execute SQL query on client side
+        const queryResult = await executeQuery(data.sql);
+        const queryResults = queryResult.toArray().map(row => {
+          // Convert BigInt values to numbers
+          const cleanRow: any = {};
+          for (const [key, value] of Object.entries(row)) {
+            cleanRow[key] = typeof value === 'bigint' ? Number(value) : value;
+          }
+          return cleanRow;
+        });
+        
+        // Send results back to API for analysis
+        const analysisResponse = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            datasetId: currentDatasetId,
+            message,
+            tableSchemas,
+            queryResults,
+            useAgents: false
+          }, (_key, value) => {
+            if (typeof value === 'bigint') {
+              return Number(value);
+            }
+            return value;
+          }),
+        });
+        
+        if (analysisResponse.ok) {
+          const analysisData = await analysisResponse.json();
+          if (analysisData.messages) {
+            analysisData.messages.forEach((msg: any) => {
+              addMessage({
+                ...msg,
+                queryData: queryResults, // Add query results to message
+                metadata: {
+                  ...msg.metadata,
+                  query: data.sql,
+                  explanation: data.explanation
+                }
+              });
+            });
+          }
+        }
+      } catch (queryError: any) {
+        // Query execution failed - provide helpful error message
+        console.error('Query execution error:', queryError);
+        
+        let errorDetails = queryError.message || 'Unknown error';
+        let suggestion = '';
+        
+        // Parse common DuckDB errors and provide suggestions
+        if (errorDetails.includes('not found') || errorDetails.includes('does not exist')) {
+          suggestion = '\n\nThis might be a column name issue. The available columns are:\n' + 
+            tableSchemas.map(s => `Table ${s.tableName}: ${s.columns.map((c: any) => c.name).join(', ')}`).join('\n');
+        } else if (errorDetails.includes('syntax error')) {
+          suggestion = '\n\nThere might be a syntax issue with the generated SQL. Please try rephrasing your question more specifically.';
+        } else if (errorDetails.includes('type mismatch') || errorDetails.includes('cannot cast')) {
+          suggestion = '\n\nThis appears to be a data type issue. Try being more specific about the columns or values you want to query.';
+        }
+        
+        const errorMessage = {
+          id: `msg_${Date.now()}`,
+          role: 'assistant' as const,
+          content: `I understood your question and generated this SQL query:\n\n\`\`\`sql\n${data.sql}\n\`\`\`\n\n❌ Query execution failed: ${errorDetails}${suggestion}\n\nWould you like to try rephrasing your question?`,
+          timestamp: new Date().toISOString(),
+          suggestions: data.suggestions || ['Show me all data', 'Show summary statistics', 'Show top 10 records']
+        };
+        addMessage(errorMessage);
+      }
+    } else if (data.messages) {
+      // Direct response without SQL execution
+      data.messages.forEach((msg: any) => {
+        addMessage(msg);
+      });
     }
   };
+
+  const generateAgentSuggestions = (content: string): ActionSuggestion[] => {
+    const suggestions: ActionSuggestion[] = [];
+    
+    // Generate suggestions based on content
+    if (content.toLowerCase().includes('invoice')) {
+      suggestions.push({
+        id: 'send_invoice',
+        label: 'Send this invoice to the customer',
+        category: 'invoice'
+      });
+      suggestions.push({
+        id: 'generate_more',
+        label: 'Generate more invoices',
+        category: 'invoice'
+      });
+      suggestions.push({
+        id: 'track_payment',
+        label: 'Track payment status',
+        category: 'analysis'
+      });
+    } else if (content.toLowerCase().includes('payment')) {
+      suggestions.push({
+        id: 'send_reminders',
+        label: 'Send payment reminders',
+        category: 'invoice'
+      });
+      suggestions.push({
+        id: 'reconcile',
+        label: 'Reconcile with bank statements',
+        category: 'analysis'
+      });
+      suggestions.push({
+        id: 'aging_report',
+        label: 'Generate aging report',
+        category: 'export'
+      });
+    } else if (content.toLowerCase().includes('report')) {
+      suggestions.push({
+        id: 'export_excel',
+        label: 'Export to Excel',
+        category: 'export'
+      });
+      suggestions.push({
+        id: 'create_viz',
+        label: 'Create visualization',
+        category: 'analysis'
+      });
+      suggestions.push({
+        id: 'schedule_reports',
+        label: 'Schedule regular reports',
+        category: 'export'
+      });
+    } else {
+      suggestions.push({
+        id: 'generate_invoices',
+        label: 'Generate invoices',
+        category: 'invoice'
+      });
+      suggestions.push({
+        id: 'track_payments',
+        label: 'Track payments',
+        category: 'analysis'
+      });
+      suggestions.push({
+        id: 'financial_analysis',
+        label: 'Run financial analysis',
+        category: 'analysis'
+      });
+    }
+    
+    return suggestions;
+  };
+
 
   const suggestions = chatMessages
     .filter(msg => msg.toolSuggestions?.length)
     .flatMap(msg => msg.toolSuggestions || []);
+
+  // Auto-scroll to bottom when new messages arrive
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight;
+    }
+  }, [chatMessages, streamingContent]);
 
   return (
     <div className="h-full flex flex-col bg-background/50 backdrop-blur-sm border-l border-border/50">
@@ -239,86 +457,86 @@ export function ChatPanel() {
               {currentDatasetId ? 'Ready to analyze your data' : 'Upload data to get started'}
             </p>
           </div>
+          {isStreaming && (
+            <Badge variant="secondary" className="animate-pulse">
+              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+              Streaming
+            </Badge>
+          )}
         </div>
       </div>
 
       {/* Chat Messages */}
       <div className="flex-1 min-h-0 relative">
-        <ScrollArea className="h-full">
+        <ScrollArea className="h-full" ref={scrollAreaRef}>
           <div className="px-6 py-6 space-y-8">
             {chatMessages.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-center space-y-6">
-                <div className="flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20">
-                  <Sparkles className="h-8 w-8 text-primary" />
-                </div>
-                <div className="space-y-3">
-                  <h4 className="text-base font-semibold text-foreground">Start a conversation</h4>
-                  <p className="text-xs text-muted-foreground max-w-[200px]">
-                    Ask about overdue vendors, cash reconciliation, or journal entries
-                  </p>
-                </div>
-                <div className="flex flex-wrap gap-2 justify-center max-w-[250px]">
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Overdue analysis</Badge>
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Cash flow</Badge>
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Reconciliation</Badge>
-                </div>
-              </div>
-            ) : (
-              <>
-                {chatMessages.map((message) => (
-                  <ChatMessage key={message.id} message={message} />
-                ))}
-                
-                {isTyping && (
-                  <div className="flex items-start gap-3">
-                    <div className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 flex-shrink-0">
-                      <Bot className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="flex-1 pt-1">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <div className="flex space-x-1">
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" />
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.1s' }} />
-                          <div className="w-2 h-2 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0.2s' }} />
-                        </div>
-                        <span>AI is analyzing...</span>
-                      </div>
-                    </div>
+              <div className="flex flex-col items-center justify-center h-64 text-center">
+                <Bot className="h-12 w-12 text-muted-foreground/50 mb-4" />
+                <p className="text-sm text-muted-foreground mb-4">
+                  {currentDatasetId 
+                    ? "Ask questions about your data or request financial operations"
+                    : "Upload a dataset to start analyzing"}
+                </p>
+                {currentDatasetId && (
+                  <div className="flex flex-wrap gap-2 justify-center">
+                    <Badge variant="secondary" className="text-xs">
+                      Try: "Show me all unpaid invoices"
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      Try: "Generate an invoice for Acme Corp"
+                    </Badge>
+                    <Badge variant="secondary" className="text-xs">
+                      Try: "Send payment reminders"
+                    </Badge>
                   </div>
                 )}
-              </>
+              </div>
+            ) : (
+              chatMessages.map((message) => (
+                <ChatMessage key={message.id} message={message} />
+              ))
+            )}
+            
+            {isTyping && !isStreaming && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <div className="flex gap-1">
+                  <span className="h-2 w-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="h-2 w-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="h-2 w-2 bg-primary/60 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                </div>
+                <span className="text-xs">AI is thinking...</span>
+              </div>
             )}
           </div>
         </ScrollArea>
       </div>
 
-      {/* Smart Actions */}
+      {/* Suggestions */}
       {suggestions.length > 0 && (
-        <div className="flex-shrink-0 px-6 py-4 border-t border-border/50 bg-muted/30">
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Zap className="h-4 w-4 text-amber-500" />
-              <span className="text-sm font-medium text-foreground">Quick Actions</span>
-            </div>
-            <div className="space-y-3">
-              {suggestions.map((suggestion) => (
-                <ActionButton
-                  key={suggestion.id}
-                  suggestion={suggestion}
-                  onClick={() => handleActionClick(suggestion.id)}
-                  icon={getActionIcon(suggestion.category)}
-                />
-              ))}
-            </div>
+        <div className="flex-shrink-0 px-6 py-3 border-t border-border/50">
+          <p className="text-xs text-muted-foreground mb-2">Suggestions:</p>
+          <div className="flex flex-wrap gap-2">
+            {suggestions.slice(0, 3).map((suggestion, index) => (
+              <Button
+                key={index}
+                variant="outline"
+                size="sm"
+                onClick={() => setInputMessage(suggestion.label)}
+                className="text-xs"
+              >
+                <Zap className="h-3 w-3 mr-1" />
+                {suggestion.label}
+              </Button>
+            ))}
           </div>
         </div>
       )}
 
-      {/* Message Input */}
+      {/* Input */}
       <div className="flex-shrink-0 p-6 border-t border-border/50 bg-background/95 backdrop-blur-md">
-        <div className="relative">
+        <div className="flex gap-3">
           <Input
-            placeholder={currentDatasetId ? "Ask about your financial data..." : "Upload data first..."}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => {
@@ -327,16 +545,21 @@ export function ChatPanel() {
                 handleSendMessage();
               }
             }}
+            placeholder={currentDatasetId ? "Ask a question or request an action..." : "Upload data first"}
             disabled={!currentDatasetId || isTyping}
-            className="pr-12 bg-muted/30 border-border/60 focus:bg-background focus:border-primary/60 focus:ring-primary/20 transition-all duration-200 rounded-xl"
+            className="flex-1 bg-background/50"
           />
           <Button 
-            onClick={handleSendMessage} 
-            disabled={!inputMessage.trim() || !currentDatasetId || isTyping}
-            size="sm"
-            className="absolute right-2 top-2 h-8 w-8 p-0 bg-primary hover:bg-primary/90 disabled:bg-muted disabled:text-muted-foreground transition-all duration-200 rounded-lg"
+            onClick={handleSendMessage}
+            disabled={!currentDatasetId || !inputMessage.trim() || isTyping}
+            size="icon"
+            className="shrink-0"
           >
-            <Send className="h-4 w-4" />
+            {isTyping ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>

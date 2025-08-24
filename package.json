@@ -13,6 +13,7 @@
     "@duckdb/duckdb-wasm": "^1.29.1-dev132.0",
     "@hookform/resolvers": "^3.9.0",
     "@next/swc-wasm-nodejs": "13.5.1",
+    "@openai/agents": "^0.0.17",
     "@radix-ui/react-accordion": "^1.2.0",
     "@radix-ui/react-alert-dialog": "^1.1.1",
     "@radix-ui/react-aspect-ratio": "^1.1.0",
