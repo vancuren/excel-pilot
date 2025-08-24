@@ -65,5 +65,5 @@ Email:     Mailgun
 
 ## 👥 Team
 
-Solo builder: **Russell Van Curen** (engineering, product, UX)
+**Russell Van Curen**
 
