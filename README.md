@@ -1,5 +1,6 @@
 # ExcelPilot — AI Accounting Assistant for SMBs
 
+Our prototype makes financial data accessible to anyone, not just those with an accounting degree or data background. By simply uploading everyday spreadsheets—like overdue balances, inventory, or a general ledger—the system automatically surfaces insights, sends invoices, flags low stock, or even automates purchasing. This saves small business owners time, reduces errors, and empowers them to make smarter decisions without complex tools or training.
 
 Video: https://www.youtube.com/watch?v=gsxsha1xDWc
 
