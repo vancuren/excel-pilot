@@ -33,16 +33,17 @@ ExcelPilot is an **AI accounting assistant** that works with the files SMBs alre
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-* **One-click actions:** Send invoices, purchase inventory, export audit reports.
+* **Agentic Tooling:** Send invoices, purchase inventory, export audit reports.
+* **AI Insight and Anylsis** 
 * **In-browser data grid:** Excel-like viewer (WASM DuckDB) for CSV/XLS/XLSX.
 * **LLM reasoning:** NL→SQL + rule-based checks for fast, explainable results.
 * **Report exports:** PDF/CSV summaries for invoices, low-stock, anomaly logs.
 
 ---
 
-## 🧱 Architecture (Hackathon Build)
+## Architecture (Hackathon Build)
 
 ```
 Frontend:  Next.js (React) + Tailwind + DuckDB-WASM (data grid) + File drop
