@@ -322,14 +322,15 @@ export function FileUploader() {
         <div
           {...getRootProps()}
           className={`
-            border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-200
+            relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all duration-200
             ${isDragActive 
-              ? 'border-primary bg-primary/5' 
+              ? 'border-primary bg-primary/5 ring-4 ring-primary/10' 
               : 'border-border hover:border-border/80 hover:bg-muted/30'
             }
             ${uploadState.status !== 'idle' ? 'pointer-events-none' : ''}
           `}
         >
+          <div className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-br from-transparent to-primary/5" />
           <input {...getInputProps()} />
           {getUploadContent()}
         </div>

@@ -1,10 +1,11 @@
 'use client';
 
-import * as duckdb from '@duckdb/duckdb-wasm';
+// Import the browser-only build to keep Node bundles out of the client
+import * as duckdb from '@duckdb/duckdb-wasm/dist/duckdb-browser.mjs';
 import { TablePreview, ColumnSchema } from '@/types';
 
-let db: duckdb.AsyncDuckDB | null = null;
-let conn: duckdb.AsyncDuckDBConnection | null = null;
+let db: any | null = null;
+let conn: any | null = null;
 
 export async function initClientDatabase() {
   if (db) return db;
@@ -127,7 +128,7 @@ export async function getTablePreview(tableName: string): Promise<TablePreview> 
 
   // Get sample data (first 100 rows)
   const dataResult = await connection.query(`SELECT * FROM ${tableName} LIMIT 100`);
-  const rows = dataResult.toArray().map(row => {
+  const rows = dataResult.toArray().map((row: any) => {
     // Convert any BigInt values to numbers in the row data
     const cleanRow: any = {};
     for (const [key, value] of Object.entries(row)) {

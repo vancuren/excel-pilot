@@ -8,6 +8,14 @@ import { cn } from '@/lib/utils';
 // Format: { THEME_NAME: CSS_SELECTOR }
 const THEMES = { light: '', dark: '.dark' } as const;
 
+// Extend Recharts Tooltip props to ensure `payload` is typed for TS
+type AnyTooltipProps = React.ComponentProps<typeof RechartsPrimitive.Tooltip> & {
+  payload?: any[];
+  active?: boolean;
+  className?: string;
+  label?: any;
+};
+
 export type ChartConfig = {
   [k in string]: {
     label?: React.ReactNode;
@@ -104,7 +112,7 @@ const ChartTooltip = RechartsPrimitive.Tooltip;
 
 const ChartTooltipContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<typeof RechartsPrimitive.Tooltip> &
+  AnyTooltipProps &
     React.ComponentProps<'div'> & {
       hideLabel?: boolean;
       hideIndicator?: boolean;
@@ -261,7 +269,8 @@ const ChartLegend = RechartsPrimitive.Legend;
 const ChartLegendContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<'div'> &
-    Pick<RechartsPrimitive.LegendProps, 'payload' | 'verticalAlign'> & {
+    // Relax typings to avoid strict payload issues across Recharts versions
+    { payload?: any[]; verticalAlign?: any } & {
       hideIcon?: boolean;
       nameKey?: string;
     }

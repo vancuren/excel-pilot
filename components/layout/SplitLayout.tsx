@@ -15,7 +15,9 @@ export function SplitLayout() {
           </div>
         </Panel>
         
-        <PanelResizeHandle className="w-1 bg-border/60 hover:bg-primary/20 transition-colors duration-200" />
+        <PanelResizeHandle className="relative group w-1 bg-border/60 hover:bg-primary/30 transition-colors duration-200">
+          <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-5 h-10 rounded-full bg-background/60 border border-border/60 shadow-sm opacity-0 group-hover:opacity-100 transition-opacity" />
+        </PanelResizeHandle>
         
         <Panel defaultSize={25} minSize={20}>
           <div className="h-full">

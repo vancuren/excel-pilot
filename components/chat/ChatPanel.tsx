@@ -97,7 +97,7 @@ export function ChatPanel() {
         try {
           // Execute SQL query on client side
           const queryResult = await executeQuery(data.sql);
-          const queryResults = queryResult.toArray().map(row => {
+          const queryResults = queryResult.toArray().map((row: any) => {
             // Convert BigInt values to numbers
             const cleanRow: any = {};
             for (const [key, value] of Object.entries(row)) {
@@ -257,13 +257,13 @@ export function ChatPanel() {
                     Ask about overdue vendors, cash reconciliation, or journal entries
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2 justify-center max-w-[250px]">
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Overdue analysis</Badge>
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Cash flow</Badge>
-                  <Badge variant="secondary" className="text-xs bg-muted/60">Reconciliation</Badge>
-                </div>
+              <div className="flex flex-wrap gap-2 justify-center max-w-[250px]">
+                <Badge variant="secondary" className="text-xs bg-muted/60">Overdue analysis</Badge>
+                <Badge variant="secondary" className="text-xs bg-muted/60">Cash flow</Badge>
+                <Badge variant="secondary" className="text-xs bg-muted/60">Reconciliation</Badge>
               </div>
-            ) : (
+            </div>
+          ) : (
               <>
                 {chatMessages.map((message) => (
                   <ChatMessage key={message.id} message={message} />
@@ -318,7 +318,7 @@ export function ChatPanel() {
       <div className="flex-shrink-0 p-6 border-t border-border/50 bg-background/95 backdrop-blur-md">
         <div className="relative">
           <Input
-            placeholder={currentDatasetId ? "Ask about your financial data..." : "Upload data first..."}
+            placeholder={currentDatasetId ? "Ask about your financial data... (Enter to send)" : "Upload data first..."}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => {
@@ -338,6 +338,9 @@ export function ChatPanel() {
           >
             <Send className="h-4 w-4" />
           </Button>
+          <div className="absolute -bottom-5 left-0 text-[11px] text-muted-foreground/80">
+            Press Enter to send • Shift+Enter for new line • ⌘K for Command
+          </div>
         </div>
       </div>
     </div>

@@ -106,12 +106,12 @@ export function DataTable({ table, searchTerm }: DataTableProps) {
       <CardContent className="flex-1 p-0 overflow-hidden">
         <div className="h-full overflow-auto">
           <Table className="relative">
-            <TableHeader>
-              <TableRow className="border-b border-border/60 bg-muted/30 hover:bg-muted/30">
+            <TableHeader className="sticky top-0 z-10">
+              <TableRow className="border-b border-border/60 bg-muted/50 backdrop-blur-sm hover:bg-muted/50">
                 {table.schema.map((column) => (
                   <TableHead
                     key={column.name}
-                    className="cursor-pointer hover:bg-muted/60 transition-colors duration-150 px-6 py-4 font-semibold"
+                    className="cursor-pointer hover:bg-muted/70 transition-colors duration-150 px-5 py-3 font-semibold"
                     onClick={() => handleSort(column.name)}
                   >
                     <div className="flex items-center gap-2">
@@ -131,7 +131,7 @@ export function DataTable({ table, searchTerm }: DataTableProps) {
               {filteredAndSortedRows.map((row, index) => (
                 <TableRow key={index} className={`hover:bg-muted/40 transition-colors duration-150 ${index % 2 === 0 ? 'bg-background' : 'bg-muted/20'}`}>
                   {table.schema.map((column) => (
-                    <TableCell key={column.name} className="font-mono text-sm px-6 py-4">
+                    <TableCell key={column.name} className="font-mono text-[13px] px-5 py-3">
                       {formatCellValue(row[column.name], column.type)}
                     </TableCell>
                   ))}

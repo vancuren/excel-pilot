@@ -1,7 +1,8 @@
 'use client';
 
+import { useState } from 'react';
 import { format } from 'date-fns';
-import { User, Bot, FileText, Download } from 'lucide-react';
+import { User, Bot, FileText, Download, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ChatMessage as ChatMessageType } from '@/types';
@@ -14,6 +15,7 @@ interface ChatMessageProps {
 
 export function ChatMessage({ message }: ChatMessageProps) {
   const isUser = message.role === 'user';
+  const [copied, setCopied] = useState(false);
 
   const styleContent = (content: string) => {
     return content
@@ -26,6 +28,14 @@ export function ChatMessage({ message }: ChatMessageProps) {
   const chatContent = isUser ? message.content : styleContent(message.content);
 
   console.log(chatContent);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {}
+  };
 
   return (
     <div className="flex items-start gap-3 group">
@@ -46,21 +56,42 @@ export function ChatMessage({ message }: ChatMessageProps) {
 
       {/* Message Content */}
       <div className="flex-1 min-w-0">
-        <div className={`
-          rounded-2xl px-5 py-4 max-w-full transition-all duration-200
+        <div className={`relative rounded-2xl px-5 py-4 max-w-full transition-all duration-200 shadow-sm
           ${isUser 
-            ? 'bg-primary text-primary-foreground ml-8 shadow-sm' 
+            ? 'bg-primary text-primary-foreground ml-8' 
             : 'bg-muted/50 border border-border/50 hover:bg-muted/70'
           }
         `}>
-          <div className="prose prose-sm max-w-none dark:prose-invert">
+          {/* Bubble tails */}
+          {isUser ? (
+            <span className="absolute -right-1 top-4 h-3 w-3 rotate-45 bg-primary" />
+          ) : (
+            <span className="absolute -left-1 top-4 h-3 w-3 rotate-45 bg-muted/50 border border-border/50" />
+          )}
+
+          {/* Copy button for assistant */}
+          {!isUser && (
+            <button
+              aria-label="Copy"
+              onClick={handleCopy}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+            >
+              {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+            </button>
+          )}
+
+          <div className="markdown-body">
 
             {isUser ? (
               <p className={`text-sm leading-relaxed whitespace-pre-wrap m-0 text-primary-foreground`}>
                 {message.content}
               </p>
             ) : (
-              <p className="text-sm leading-relaxed whitespace-pre-wrap m-0 text-foreground" dangerouslySetInnerHTML={{ __html: marked.parse(message.content) }}></p>
+              <div
+                id="chat-message-content"
+                className="text-sm leading-relaxed whitespace-normal m-0 text-foreground"
+                dangerouslySetInnerHTML={{ __html: marked.parse(message.content) as string }}
+              />
             )}
 
             {/* <p className={`text-sm leading-relaxed whitespace-pre-wrap m-0 ${
