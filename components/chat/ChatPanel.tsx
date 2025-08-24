@@ -67,8 +67,8 @@ export function ChatPanel() {
         }
       }
       
-      // First, get SQL query from LLM
-      const response = await fetch('/api/chat', {
+      // First, get SQL query from LLM (use tool-enabled endpoint)
+      const response = await fetch('/api/chat-with-tools', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -106,24 +106,59 @@ export function ChatPanel() {
             return cleanRow;
           });
           
-          // Send results back to API for analysis
-          const analysisResponse = await fetch('/api/chat', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              datasetId: currentDatasetId,
-              message: inputMessage,
-              tableSchemas,
-              queryResults
-            }, (_key, value) => {
-              if (typeof value === 'bigint') {
-                return Number(value);
+          // Check if there are pending tools to execute after SQL
+          if (data.pendingTools && data.pendingTools.length > 0) {
+            console.log('Executing pending tools with query results:', {
+              tools: data.pendingTools,
+              resultsCount: queryResults.length
+            });
+            
+            // Execute pending tools with query results
+            const toolResponse = await fetch('/api/chat-with-tools', {
+              method: 'PUT',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                pendingTools: data.pendingTools,
+                queryResults
+              }, (_key, value) => {
+                if (typeof value === 'bigint') {
+                  return Number(value);
+                }
+                return value;
+              }),
+            });
+            
+            if (toolResponse.ok) {
+              const toolData = await toolResponse.json();
+              if (toolData.messages) {
+                toolData.messages.forEach((msg: any) => {
+                  addMessage(msg);
+                });
               }
-              return value;
-            }),
-          });
+            } else {
+              console.error('Tool execution failed:', await toolResponse.text());
+            }
+          } else {
+            // Send results back to API for analysis (no tools)
+            const analysisResponse = await fetch('/api/chat-with-tools', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                datasetId: currentDatasetId,
+                message: inputMessage,
+                tableSchemas,
+                queryResults
+              }, (_key, value) => {
+                if (typeof value === 'bigint') {
+                  return Number(value);
+                }
+                return value;
+              }),
+            });
           
           if (analysisResponse.ok) {
             const analysisData = await analysisResponse.json();
@@ -140,6 +175,7 @@ export function ChatPanel() {
                 });
               });
             }
+          }
           }
         } catch (queryError: any) {
           // Query execution failed - provide helpful error message

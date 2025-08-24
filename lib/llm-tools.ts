@@ -38,6 +38,18 @@ export interface EmailGenerationParams {
   context: string;
 }
 
+export interface EmailSendParams {
+  to: string | string[];
+  subject: string;
+  message: string;
+  data?: any[];
+  mailgunConfig?: {
+    apiKey: string;
+    domain: string;
+    from: string;
+  };
+}
+
 /**
  * Generate a comprehensive report using LLM analysis
  */
@@ -644,6 +656,77 @@ async function createEmailHTML(content: any, params: EmailGenerationParams): Pro
 </html>`;
 
   return html;
+}
+
+/**
+ * Send email with optional data
+ */
+export async function sendEmail(params: EmailSendParams): Promise<ToolExecutionResult> {
+  try {
+    // Prepare the email content
+    const emailHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="white-space: pre-wrap;">${params.message}</div>
+        ${params.data && params.data.length > 0 ? `
+          <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+            <thead>
+              <tr style="background-color: #f5f5f5;">
+                ${Object.keys(params.data[0]).map(key => 
+                  `<th style="padding: 10px; text-align: left; border: 1px solid #ddd;">${key}</th>`
+                ).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${params.data.map(row => `
+                <tr>
+                  ${Object.values(row).map(value => 
+                    `<td style="padding: 10px; border: 1px solid #ddd;">${value ?? ''}</td>`
+                  ).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        ` : ''}
+      </div>
+    `;
+
+    // Send via API - use absolute URL for server-side fetch
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000';
+    const response = await fetch(`${baseUrl}/api/email/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        to: params.to,
+        subject: params.subject,
+        text: params.message,
+        html: emailHtml,
+        config: params.mailgunConfig
+      })
+    });
+
+    const result = await response.json();
+    
+    if (response.ok && result.success) {
+      return {
+        success: true,
+        type: 'email',
+        content: `Email sent successfully to ${Array.isArray(params.to) ? params.to.join(', ') : params.to}`
+      };
+    } else {
+      return {
+        success: false,
+        type: 'email',
+        error: result.error || 'Failed to send email'
+      };
+    }
+  } catch (error) {
+    console.error('Email sending error:', error);
+    return {
+      success: false,
+      type: 'email',
+      error: error instanceof Error ? error.message : 'Failed to send email'
+    };
+  }
 }
 
 /**
